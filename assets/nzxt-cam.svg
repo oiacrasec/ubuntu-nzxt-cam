@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Ícone próprio do porte (anel + ponto), sem recursos da NZXT. -->
+  <circle cx="32" cy="32" r="25" fill="none" stroke="#7e22ce" stroke-width="10"/>
+  <circle cx="32" cy="32" r="9" fill="#7e22ce"/>
+</svg>

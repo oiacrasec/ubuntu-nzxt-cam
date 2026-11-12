@@ -10,8 +10,14 @@ checks indicados. **Limitação conhecida** descreve algo que o produto ainda n�
 resolve. **Proposto** identifica um desenho técnico sem implementação. **Fora do
 escopo atual** mantém registrado um tema sem prometer sua entrega.
 
-Em 12/11/2026 não há código: todo o comportamento descrito é **Proposto**, e as
-observações do CAM são evidências da referência Windows, não do porte.
+Em 12/11/2026 o código existe e passa nos testes automáticos, mas ainda não foi
+executado no Ubuntu: "implementado" significa presente no código, não validado no
+hardware. As observações do CAM são evidências da referência Windows, não do porte.
+
+## Uso
+
+- [Compilar, instalar, permissões, telas e CLI](USO.md)
+- [Roteiro de validação no Ubuntu e resultados](VALIDACAO_LOCAL.md)
 
 ## Engenharia
 

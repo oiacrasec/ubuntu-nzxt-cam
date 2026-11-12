@@ -4,9 +4,21 @@ Controlador nativo em Rust que porta o NZXT CAM para Ubuntu 24.04+: monitorament
 do PC, curvas de bomba e fans, iluminação RGB e perfis, com o layout do CAM.
 Dispositivos-alvo: NZXT Kraken X (X52/X62/X72) e NZXT Smart Device V1.
 
-**Estado: em planejamento.** Ainda não há código executável. A arquitetura e a
-referência Windows estão documentadas; a implementação começa pela fundação do
-controlador. Veja o [roadmap](docs/ROADMAP.md).
+**Estado: em desenvolvimento, sem validação no Ubuntu.** O código compila e passa
+nos testes automáticos; a execução com os dispositivos segue o
+[roteiro de validação](docs/VALIDACAO_LOCAL.md). Veja o [roadmap](docs/ROADMAP.md).
+
+## Executar
+
+```bash
+sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
+  libx11-dev libgl1-mesa-dev libdbus-1-dev
+./test-desktop-app.sh
+./install-desktop-app.sh
+```
+
+Depois abra **NZXT CAM** no menu e prepare o acesso em **Configurações** ›
+**Acesso aos dispositivos**. Detalhes em [Uso](docs/USO.md).
 
 ## Escopo
 
