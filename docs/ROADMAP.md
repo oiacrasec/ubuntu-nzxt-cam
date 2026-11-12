@@ -9,9 +9,10 @@ distingue código existente, evidência, lacunas e condições de aceitação.
 | Dimensão | Estado | Próxima verificação |
 | --- | --- | --- |
 | Referência Windows | Levantamento inicial | Protocolo HID no `index.node` com Ghidra |
-| Controlador, IPC, CLI, configuração | Proposto | Build e testes de contrato no Ubuntu |
-| Permissões (regra udev) | Proposto | Acesso ao hidraw como usuário comum |
-| Sensores (CPU, GPU, RAM, disco, rede) | Proposto | Leitura no i9-9900K e na RTX 4070 SUPER |
+| Controlador, IPC, CLI, configuração | Implementado, sem validação no Ubuntu | Testes unitários no Windows; build e execução no Ubuntu pendentes |
+| Permissões (regra udev) | Implementado, sem validação no Ubuntu | Acesso ao hidraw como usuário comum |
+| Sensores (CPU, GPU, RAM, disco, rede) | Implementado, sem validação no Ubuntu | Leitura no i9-9900K e na RTX 4070 SUPER |
+| Governador e curvas | Implementado, sem validação no Ubuntu | Lógica testada sem hardware; resposta real pendente |
 | Kraken X: status | Proposto | Temperatura do líquido, RPM da bomba e do fan |
 | Kraken X: curva de segurança e perfis | Proposto | Perfil interno sobrevive ao encerramento do app |
 | Kraken X: iluminação Ring/Logo | Proposto | Modos habilitados pelo CAM para este modelo |

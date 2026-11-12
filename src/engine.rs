@@ -1,0 +1,614 @@
+use crate::{
+    config::{Config, TemperatureUnit},
+    curves::{ChannelCooling, Point, Source},
+    devices::{self, Info, Transport},
+    driver::{self, CoolingChannel, Driver, LightingChannel, Status},
+    governor::{self, Action, ChannelState},
+    lighting::ChannelLighting,
+    permissions,
+    sensors::{Readings, Sensors},
+};
+use anyhow::{Context, Result, bail};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver},
+    },
+    thread,
+    time::{Duration, Instant},
+};
+
+const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "command", rename_all = "snake_case")]
+pub enum Request {
+    Status,
+    Refresh,
+    SetCooling {
+        channel: String,
+        cooling: ChannelCooling,
+    },
+    SetLighting {
+        channel: String,
+        lighting: ChannelLighting,
+    },
+    UpdateSettings {
+        #[serde(default)]
+        language: Option<String>,
+        #[serde(default)]
+        temperature_unit: Option<TemperatureUnit>,
+        #[serde(default)]
+        cpu_average_temperature: Option<bool>,
+        #[serde(default)]
+        start_minimized: Option<bool>,
+        #[serde(default)]
+        mini_mode: Option<bool>,
+        #[serde(default)]
+        mini_always_on_top: Option<bool>,
+        #[serde(default)]
+        gpu_index: Option<usize>,
+    },
+    SetAutostart {
+        enabled: bool,
+    },
+    PreparePermissions {
+        action: permissions::Action,
+    },
+    ConfirmPlan {
+        id: u64,
+    },
+    CancelPlan,
+    Show,
+    Quit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum DeviceStatus {
+    Initializing,
+    Ready,
+    PermissionDenied,
+    Conflict { processes: Vec<String> },
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceState {
+    pub info: Info,
+    pub name: String,
+    pub status: DeviceStatus,
+    pub error: Option<String>,
+    pub cooling: Vec<CoolingChannel>,
+    pub lighting: Vec<LightingChannel>,
+    pub last_status: Option<Status>,
+    pub channels: BTreeMap<String, ChannelState>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Snapshot {
+    pub config: Config,
+    pub devices: Vec<DeviceState>,
+    pub sensors: Readings,
+    pub permissions: permissions::State,
+    pub autostart: bool,
+    pub languages: Vec<String>,
+    pub message: String,
+    pub error: Option<String>,
+    /// Incrementado a cada pedido de mostrar a janela (bandeja, segunda instância).
+    pub show_requests: u64,
+    pub quit: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Reply {
+    pub ok: bool,
+    pub message: String,
+    pub state: Snapshot,
+}
+
+pub type SharedState = Arc<Mutex<Snapshot>>;
+
+/// Caminhos do sistema; os testes apontam para árvores temporárias.
+#[derive(Clone, Debug)]
+pub struct System {
+    pub sys: PathBuf,
+    pub dev: PathBuf,
+    pub proc_: PathBuf,
+    pub rule: PathBuf,
+}
+
+impl Default for System {
+    fn default() -> Self {
+        Self {
+            sys: "/sys".into(),
+            dev: "/dev".into(),
+            proc_: "/proc".into(),
+            rule: permissions::RULE_PATH.into(),
+        }
+    }
+}
+
+pub type Opener = Box<dyn Fn(&Info) -> Result<Box<dyn Transport>> + Send>;
+
+pub struct Engine {
+    config_path: PathBuf,
+    system: System,
+    pub state: Snapshot,
+    pub shared: SharedState,
+    drivers: BTreeMap<String, Box<dyn Driver>>,
+    sensors: Sensors,
+    opener: Opener,
+    last_cycle: Option<Instant>,
+    last_discovery: Option<Instant>,
+    next_plan: u64,
+    plan_result: Option<Receiver<Result<String>>>,
+}
+
+fn channel_key(device: &str, channel: &str) -> String {
+    format!("{device}/{channel}")
+}
+
+impl Engine {
+    pub fn new(config_path: PathBuf) -> Result<Self> {
+        let opener: Opener = Box::new(|info: &Info| {
+            Ok(Box::new(devices::Hidraw::open(&info.node)?) as Box<dyn Transport>)
+        });
+        Self::with_system(config_path, System::default(), opener)
+    }
+
+    pub fn with_system(config_path: PathBuf, system: System, opener: Opener) -> Result<Self> {
+        let config = Config::load(&config_path)?;
+        let sensors = Sensors::new(system.sys.clone(), system.proc_.clone());
+        let mut engine = Self {
+            state: Snapshot {
+                config,
+                languages: crate::i18n::available(&config_path),
+                ..Default::default()
+            },
+            shared: SharedState::default(),
+            config_path,
+            system,
+            drivers: BTreeMap::new(),
+            sensors,
+            opener,
+            last_cycle: None,
+            last_discovery: None,
+            next_plan: 1,
+            plan_result: None,
+        };
+        engine.refresh_permissions();
+        engine.state.autostart = crate::desktop::autostart_enabled().unwrap_or(false);
+        engine.discover();
+        engine.cycle();
+        engine.publish();
+        Ok(engine)
+    }
+
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
+    }
+
+    fn publish(&self) {
+        *self.shared.lock().unwrap_or_else(|e| e.into_inner()) = self.state.clone();
+    }
+
+    fn refresh_permissions(&mut self) {
+        let (installed, outdated) = permissions::read_state(&self.system.rule);
+        self.state.permissions.rule_installed = installed;
+        self.state.permissions.rule_outdated = outdated;
+    }
+
+    /// Abre dispositivos novos e retira os que sumiram.
+    fn discover(&mut self) {
+        self.last_discovery = Some(Instant::now());
+        let found = devices::discover(&self.system.sys, &self.system.dev);
+        self.state.devices.retain(|d| {
+            found
+                .iter()
+                .any(|f| f.id == d.info.id && f.node == d.info.node)
+        });
+        self.drivers
+            .retain(|id, _| found.iter().any(|f| &f.id == id));
+        for info in found {
+            if self.drivers.contains_key(&info.id) {
+                continue;
+            }
+            let state = self.open_device(info.clone());
+            match self.state.devices.iter_mut().find(|d| d.info.id == info.id) {
+                Some(existing) => *existing = state,
+                None => self.state.devices.push(state),
+            }
+        }
+        self.state.devices.sort_by(|a, b| a.info.id.cmp(&b.info.id));
+    }
+
+    fn open_device(&mut self, info: Info) -> DeviceState {
+        let mut state = DeviceState {
+            name: info.kind.display_name().into(),
+            info: info.clone(),
+            status: DeviceStatus::Initializing,
+            error: None,
+            cooling: Vec::new(),
+            lighting: Vec::new(),
+            last_status: None,
+            channels: BTreeMap::new(),
+        };
+        let holders = devices::holders(&self.system.proc_, &info.node);
+        if !holders.is_empty() {
+            state.status = DeviceStatus::Conflict {
+                processes: holders
+                    .into_iter()
+                    .map(|(pid, comm)| format!("{comm} ({pid})"))
+                    .collect(),
+            };
+            state.error = Some(
+                "Outro programa está usando o dispositivo; feche-o e clique em Atualizar".into(),
+            );
+            return state;
+        }
+        let transport = match (self.opener)(&info) {
+            Ok(transport) => transport,
+            Err(e) => {
+                let denied = format!("{e:#}").contains("Sem permissão");
+                state.status = if denied {
+                    DeviceStatus::PermissionDenied
+                } else {
+                    DeviceStatus::Failed
+                };
+                state.error = Some(format!("{e:#}"));
+                return state;
+            }
+        };
+        let mut driver = driver::open(info.clone(), transport);
+        state.cooling = driver.cooling_channels();
+        state.lighting = driver.lighting_channels();
+        if let Err(e) = driver.initialize() {
+            state.status = DeviceStatus::Failed;
+            state.error = Some(format!("Falha ao inicializar: {e:#}"));
+            return state;
+        }
+        for channel in &state.lighting {
+            let key = channel_key(&info.id, &channel.name);
+            if let Some(lighting) = self.state.config.lighting.get(&key)
+                && lighting.validate(&channel.capabilities).is_ok()
+                && let Err(e) = driver.set_lighting(&channel.name, lighting)
+            {
+                state.error = Some(format!("Iluminação {}: {e:#}", channel.name));
+            }
+        }
+        state.status = DeviceStatus::Ready;
+        self.drivers.insert(info.id.clone(), driver);
+        state
+    }
+
+    /// Um ciclo do governador: sensores, status e escritas de refrigeração.
+    fn cycle(&mut self) {
+        self.last_cycle = Some(Instant::now());
+        self.state.sensors = self.sensors.read();
+        let config = self.state.config.clone();
+        for device in &mut self.state.devices {
+            let Some(driver) = self.drivers.get_mut(&device.info.id) else {
+                continue;
+            };
+            match driver.status() {
+                Ok(status) => {
+                    device.last_status = Some(status);
+                    if device.status == DeviceStatus::Failed {
+                        device.status = DeviceStatus::Ready;
+                        device.error = None;
+                    }
+                }
+                Err(e) => {
+                    device.status = DeviceStatus::Failed;
+                    device.error = Some(format!("Comunicação com o dispositivo falhou: {e:#}"));
+                    continue;
+                }
+            }
+            let liquid = device
+                .last_status
+                .as_ref()
+                .and_then(|s| s.liquid_temperature);
+            let inputs = governor::Inputs {
+                readings: &self.state.sensors,
+                liquid,
+                cpu_average: config.ui.cpu_average_temperature,
+                config: &config.governor,
+            };
+            for channel in &device.cooling {
+                let key = channel_key(&device.info.id, &channel.name);
+                let cooling = config.cooling.get(&key).cloned().unwrap_or_default();
+                let state = device.channels.entry(channel.name.clone()).or_default();
+                let action = governor::decide(channel, &cooling, state, &inputs);
+                let result = match &action {
+                    Action::Profile(points) => driver.set_profile(&channel.name, points),
+                    Action::Duty(duty) => driver.set_duty(&channel.name, *duty),
+                    Action::Keep => Ok(()),
+                };
+                match result {
+                    Ok(()) => governor::applied(state, &action),
+                    Err(e) => state.error = Some(format!("{e:#}")),
+                }
+            }
+        }
+    }
+
+    pub fn reply(&self, ok: bool, message: impl Into<String>) -> Reply {
+        Reply {
+            ok,
+            message: message.into(),
+            state: self.state.clone(),
+        }
+    }
+
+    pub fn handle(&mut self, request: Request) -> Reply {
+        let result = self.dispatch(request);
+        let reply = match result {
+            Ok(message) => {
+                self.state.message = message.clone();
+                self.state.error = None;
+                self.reply(true, message)
+            }
+            Err(e) => {
+                let message = format!("{e:#}");
+                self.state.error = Some(message.clone());
+                self.reply(false, message)
+            }
+        };
+        self.publish();
+        reply
+    }
+
+    fn find_channel(&self, key: &str) -> Result<(&DeviceState, String)> {
+        let (device, channel) = key
+            .rsplit_once('/')
+            .context("Canal deve ser <dispositivo>/<canal>")?;
+        let state = self
+            .state
+            .devices
+            .iter()
+            .find(|d| d.info.id == device)
+            .context("Dispositivo não encontrado")?;
+        Ok((state, channel.to_owned()))
+    }
+
+    fn save_config(&mut self, config: Config) -> Result<()> {
+        config.save(&self.config_path)?;
+        self.state.config = config;
+        Ok(())
+    }
+
+    fn dispatch(&mut self, request: Request) -> Result<String> {
+        match request {
+            Request::Status => Ok(String::new()),
+            Request::Refresh => {
+                self.drivers.clear();
+                self.state.devices.clear();
+                self.refresh_permissions();
+                self.state.languages = crate::i18n::available(&self.config_path);
+                self.state.autostart = crate::desktop::autostart_enabled().unwrap_or(false);
+                self.discover();
+                self.cycle();
+                Ok("Dispositivos atualizados".into())
+            }
+            Request::SetCooling { channel, cooling } => {
+                let (device, name) = self.find_channel(&channel)?;
+                let physical = device
+                    .cooling
+                    .iter()
+                    .find(|c| c.name == name)
+                    .context("Canal de refrigeração não encontrado")?;
+                if cooling.source == Source::Liquid
+                    && device
+                        .last_status
+                        .as_ref()
+                        .and_then(|s| s.liquid_temperature)
+                        .is_none()
+                    && !physical.internal_profile
+                {
+                    bail!("Este dispositivo não mede a temperatura do líquido");
+                }
+                cooling.points(physical.limits)?;
+                let mut config = self.state.config.clone();
+                config.cooling.insert(channel, cooling);
+                self.save_config(config)?;
+                self.cycle();
+                Ok("Perfil de refrigeração aplicado".into())
+            }
+            Request::SetLighting { channel, lighting } => {
+                let (device, name) = self.find_channel(&channel)?;
+                let physical = device
+                    .lighting
+                    .iter()
+                    .find(|c| c.name == name)
+                    .context("Canal de iluminação não encontrado")?;
+                lighting.validate(&physical.capabilities)?;
+                let id = device.info.id.clone();
+                let driver = self
+                    .drivers
+                    .get_mut(&id)
+                    .context("Dispositivo indisponível")?;
+                driver.set_lighting(&name, &lighting)?;
+                let mut config = self.state.config.clone();
+                config.lighting.insert(channel, lighting);
+                self.save_config(config)?;
+                Ok("Iluminação aplicada".into())
+            }
+            Request::UpdateSettings {
+                language,
+                temperature_unit,
+                cpu_average_temperature,
+                start_minimized,
+                mini_mode,
+                mini_always_on_top,
+                gpu_index,
+            } => {
+                let mut config = self.state.config.clone();
+                if let Some(language) = language {
+                    crate::i18n::load(&language, &self.config_path)?;
+                    config.ui.language = language;
+                }
+                if let Some(unit) = temperature_unit {
+                    config.ui.temperature_unit = unit;
+                }
+                if let Some(average) = cpu_average_temperature {
+                    config.ui.cpu_average_temperature = average;
+                }
+                if let Some(minimized) = start_minimized {
+                    config.ui.start_minimized = minimized;
+                }
+                if let Some(mini) = mini_mode {
+                    config.ui.mini_mode = mini;
+                }
+                if let Some(on_top) = mini_always_on_top {
+                    config.ui.mini_always_on_top = on_top;
+                }
+                if let Some(index) = gpu_index {
+                    config.governor.gpu_index = index;
+                }
+                self.save_config(config)?;
+                Ok("Configurações salvas".into())
+            }
+            Request::SetAutostart { enabled } => {
+                if enabled {
+                    crate::desktop::install_autostart()?;
+                } else {
+                    crate::desktop::remove_autostart()?;
+                }
+                self.state.autostart = crate::desktop::autostart_enabled()?;
+                Ok(if enabled {
+                    "Início automático ativado"
+                } else {
+                    "Início automático desativado"
+                }
+                .into())
+            }
+            Request::PreparePermissions { action } => {
+                if self.state.permissions.running {
+                    bail!("Uma preparação de permissões já está em andamento");
+                }
+                let id = self.next_plan;
+                self.next_plan += 1;
+                self.state.permissions.plan =
+                    Some(permissions::plan(id, action, &std::env::current_exe()?));
+                Ok("Revise o plano e confirme".into())
+            }
+            Request::ConfirmPlan { id } => {
+                let plan = self
+                    .state
+                    .permissions
+                    .plan
+                    .take()
+                    .filter(|p| p.id == id)
+                    .context("Plano inexistente ou já usado; prepare novamente")?;
+                let executable = std::env::current_exe()?;
+                let (tx, rx) = mpsc::channel();
+                thread::spawn(move || {
+                    let _ = tx.send(permissions::run(plan.action, &executable));
+                });
+                self.plan_result = Some(rx);
+                self.state.permissions.running = true;
+                self.state.permissions.error = None;
+                Ok("Aguardando autorização do Ubuntu".into())
+            }
+            Request::CancelPlan => {
+                self.state.permissions.plan = None;
+                Ok("Plano descartado".into())
+            }
+            Request::Show => {
+                self.state.show_requests += 1;
+                Ok(String::new())
+            }
+            Request::Quit => {
+                if self.state.permissions.running {
+                    bail!("Aguarde a preparação de permissões terminar");
+                }
+                self.shutdown();
+                self.state.quit = true;
+                Ok("Encerrando".into())
+            }
+        }
+    }
+
+    /// Deixa cada canal num estado seguro sem o aplicativo.
+    pub fn shutdown(&mut self) {
+        let config = self.state.config.clone();
+        for device in &self.state.devices {
+            let Some(driver) = self.drivers.get_mut(&device.info.id) else {
+                continue;
+            };
+            for channel in &device.cooling {
+                let key = channel_key(&device.info.id, &channel.name);
+                let cooling = config.cooling.get(&key).cloned().unwrap_or_default();
+                let result = if channel.internal_profile {
+                    // Curva do perfil se a fonte for o líquido; senão Silent pelo líquido.
+                    let liquid = if cooling.source == Source::Liquid {
+                        cooling
+                    } else {
+                        ChannelCooling::default()
+                    };
+                    let points: Vec<Point> = liquid
+                        .points(channel.limits)
+                        .unwrap_or_else(|_| driver::flat_with_safety(100, channel.limits));
+                    driver.set_profile(&channel.name, &points)
+                } else {
+                    driver.set_duty(&channel.name, config.governor.exit_duty)
+                };
+                if let Err(e) = result {
+                    eprintln!("Encerramento de {key}: {e:#}");
+                }
+            }
+        }
+        self.drivers.clear();
+    }
+
+    /// Chamado pelo laço do controlador; retorna `true` se o estado mudou.
+    pub fn tick(&mut self) -> bool {
+        let mut changed = false;
+        if let Some(rx) = &self.plan_result
+            && let Ok(result) = rx.try_recv()
+        {
+            self.plan_result = None;
+            self.state.permissions.running = false;
+            match result {
+                Ok(log) => {
+                    self.state.permissions.log = log;
+                    self.state.message = "Permissões preparadas".into();
+                }
+                Err(e) => self.state.permissions.error = Some(format!("{e:#}")),
+            }
+            self.refresh_permissions();
+            // A regra nova vale para nós reabertos.
+            self.drivers.clear();
+            self.state.devices.clear();
+            self.discover();
+            changed = true;
+        }
+        let interval = Duration::from_millis(self.state.config.governor.interval_ms);
+        if self.last_cycle.is_none_or(|t| t.elapsed() >= interval) {
+            if self
+                .last_discovery
+                .is_none_or(|t| t.elapsed() >= DISCOVERY_INTERVAL)
+            {
+                self.discover();
+            }
+            self.cycle();
+            changed = true;
+        }
+        if changed {
+            self.publish();
+        }
+        changed
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        if !self.drivers.is_empty() {
+            self.shutdown();
+        }
+    }
+}
