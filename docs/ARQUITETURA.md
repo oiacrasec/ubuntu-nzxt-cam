@@ -1,7 +1,8 @@
 # Arquitetura do NZXT CAM para Ubuntu
 
-**Estado: Proposto.** Esta página define os contratos que o código deve seguir;
-nenhum módulo abaixo existe ainda. O desenho segue o porte do Facecam Hub
+**Estado: implementado, sem validação no Ubuntu.** Os módulos abaixo existem e
+passam nos testes automáticos; os protocolos dos dispositivos dependem da
+[referência Windows](REFERENCIA_WINDOWS.md). O desenho segue o porte do Facecam Hub
 (`ubuntu-elgato-facecam`): um controlador único atende janela, bandeja e linha de
 comando, e as interfaces só apresentam estado e enviam pedidos.
 
@@ -31,9 +32,11 @@ de aplicar perfil, salvar ou ler sensores.
 
 | Módulo | Responsabilidade | Equivale no Facecam Hub |
 | --- | --- | --- |
-| `devices.rs` | Descoberta em sysfs por VID/PID, abertura do hidraw, identidade estável por caminho USB e serial | `camera.rs` |
+| `devices.rs` | Descoberta em sysfs por VID/PID, `Transport` sobre hidraw com `poll` seguro, identidade por serial ou caminho USB, detecção de conflito por `/proc/*/fd` | `camera.rs` |
+| `driver.rs` | Interface comum dos dispositivos: canais, limites, status, perfil, duty e iluminação | — |
 | `kraken_x.rs` | Protocolo do Kraken X52/X62/X72: status (líquido, bomba, fan), perfis de bomba/fan, iluminação Ring/Logo | parte de `camera.rs` |
 | `smart_device.rs` | Protocolo do Smart Device V1: três fans, canal de iluminação, sensor de ruído | parte de `camera.rs` |
+| `protocol.rs` | Codificação e decodificação dos relatórios HID, sem E/S, testável com amostras | — |
 | `sensors.rs` | CPU (`coretemp`/`k10temp`, `/proc/stat`), GPU (NVML carregada sob demanda, `amdgpu`), RAM (`/proc/meminfo`), armazenamento (`nvme`/`drivetemp`), rede (`/proc/net/dev`) | `stream.rs` (fonte contínua) |
 | `curves.rs` | Perfis Silent/Performance/Fixed/Custom, interpolação, pisos e validação | `effects.rs` |
 | `lighting.rs` | Modos, cores, velocidade, direção e validação por dispositivo | `effects.rs` |

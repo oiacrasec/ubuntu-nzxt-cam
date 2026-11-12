@@ -48,6 +48,34 @@ A análise do CAM acontece na máquina Windows onde ele está instalado. Build,
 testes e ensaios com hardware acontecem no Ubuntu de destino, por escolha do
 usuário; WSL não é usado para validar hidraw, hwmon ou udev.
 
+## "Fixo" no Kraken é uma curva plana com teto de segurança — 12/11/2026
+
+**Problema:** com fonte CPU ou GPU, o governador escreve rotações calculadas; se
+ele morrer, o Kraken ficaria com a última rotação, como o Smart Device.
+**Escolha:** no Kraken, toda escrita é uma curva pela temperatura do líquido. Uma
+rotação calculada vira uma curva plana nesse valor até 59 °C e 100% a partir de
+60 °C. **Consequência:** sem o aplicativo, o próprio firmware ainda acelera bomba e
+fan se o líquido esquentar. Ao sair normalmente, o controlador grava a curva do
+perfil (fonte Líquido) ou Silent pelo líquido. **Validação:** etapa 6 do
+[roteiro](VALIDACAO_LOCAL.md).
+
+## Testes no Windows, produto no Linux — 12/11/2026
+
+O usuário pediu para adiantar no Windows tudo o que não depende do Linux. Os
+módulos que usam APIs Unix (`ipc`, GUI, bandeja e hidraw) ficam atrás de
+`cfg(unix)`; no Windows, o binário só informa que executa no Linux. Assim,
+`cargo test` roda no Windows a lógica de curvas, governador, configuração,
+sensores com árvores sintéticas, descoberta, permissões e protocolos, e
+`cargo clippy --target x86_64-unknown-linux-gnu` confere o código Linux. Isso não
+substitui o [roteiro no Ubuntu](VALIDACAO_LOCAL.md).
+
+## NVML carregada sob demanda
+
+A GPU NVIDIA é lida pela NVML do driver (`nvml-wrapper`, recurso `nvidia`), que
+carrega `libnvidia-ml.so` na primeira leitura. Sem driver NVIDIA, a GPU fica
+ausente sem erro; o build não exige CUDA. `nvidia-smi` por processo a cada ciclo
+foi descartado pelo custo de criar um processo por segundo. GPUs AMD usam hwmon.
+
 ## Como registrar uma nova decisão
 
 Indicar data, problema, contexto, alternativas examinadas, escolha, consequências
