@@ -1,0 +1,28 @@
+# Referência Windows, ferramentas de análise e evidências locais
+/package/
+
+# Rust
+/target/
+
+# Estado local de ferramentas
+.remember/
+.claude-wt/worktrees
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Configuração local
+config.json.local
+*.backup
