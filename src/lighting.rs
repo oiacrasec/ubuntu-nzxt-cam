@@ -23,9 +23,16 @@ pub enum Mode {
     RainbowPulse,
     StarryNight,
     Candle,
+    /// Cor calculada pelo aplicativo a partir da temperatura (não existe no firmware).
+    CpuTemperature,
+    GpuTemperature,
 }
 
 impl Mode {
+    pub fn is_temperature(self) -> bool {
+        matches!(self, Self::CpuTemperature | Self::GpuTemperature)
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Off => "Desligado",
@@ -46,6 +53,8 @@ impl Mode {
             Self::RainbowPulse => "Rainbow Pulse",
             Self::StarryNight => "Starry Night",
             Self::Candle => "Candle",
+            Self::CpuTemperature => "CPU Temperature",
+            Self::GpuTemperature => "GPU Temperature",
         }
     }
 }
@@ -106,6 +115,44 @@ pub struct ChannelLighting {
     /// "Personalizar cores LED": uma cor por LED nos modos aceitos pelo canal.
     pub per_led: bool,
     pub led_colors: Vec<Rgb>,
+    /// Limites dos modos por temperatura: acima de cada um vale a sua cor.
+    pub thresholds: Vec<Threshold>,
+}
+
+/// Linha "é superior a" do editor de temperatura do CAM.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Threshold {
+    pub temperature: f64,
+    pub color: Rgb,
+}
+
+/// Limites padrão observados no CAM 4.76.8 (Logótipo em Temperatura do CPU).
+pub fn default_thresholds() -> Vec<Threshold> {
+    [
+        (0.0, Rgb(0x00, 0xff, 0x00)),
+        (65.0, Rgb(0x84, 0xff, 0x00)),
+        (70.0, Rgb(0xba, 0xff, 0x00)),
+        (75.0, Rgb(0xff, 0xff, 0x00)),
+        (80.0, Rgb(0xff, 0xae, 0x00)),
+        (85.0, Rgb(0xff, 0x48, 0x00)),
+        (90.0, Rgb(0xff, 0x00, 0x00)),
+    ]
+    .into_iter()
+    .map(|(temperature, color)| Threshold { temperature, color })
+    .collect()
+}
+
+/// Cor da faixa: o último limite que a temperatura supera; abaixo de todos, o primeiro.
+pub fn threshold_color(thresholds: &[Threshold], temperature: f64) -> Option<Rgb> {
+    let first = thresholds.first()?;
+    Some(
+        thresholds
+            .iter()
+            .rev()
+            .find(|t| temperature > t.temperature)
+            .unwrap_or(first)
+            .color,
+    )
 }
 
 impl Default for ChannelLighting {
@@ -120,6 +167,7 @@ impl Default for ChannelLighting {
             brightness: 100,
             per_led: false,
             led_colors: Vec::new(),
+            thresholds: default_thresholds(),
         }
     }
 }
@@ -156,6 +204,23 @@ impl ChannelLighting {
         if self.led_colors.len() > 40 {
             bail!("No máximo 40 cores por LED");
         }
+        if self.mode.is_temperature() {
+            if self.thresholds.is_empty() || self.thresholds.len() > 10 {
+                bail!("O modo por temperatura aceita de 1 a 10 limites");
+            }
+            for pair in self.thresholds.windows(2) {
+                if pair[1].temperature <= pair[0].temperature {
+                    bail!("Os limites de temperatura devem ser crescentes");
+                }
+            }
+            if self
+                .thresholds
+                .iter()
+                .any(|t| !t.temperature.is_finite() || !(0.0..=120.0).contains(&t.temperature))
+            {
+                bail!("Limite de temperatura deve estar entre 0 e 120 °C");
+            }
+        }
         if self.brightness > 100 {
             bail!("Brilho deve estar entre 0 e 100%");
         }
@@ -166,6 +231,25 @@ impl ChannelLighting {
             bail!("O modo {} não tem direção", self.mode.label());
         }
         Ok(())
+    }
+}
+
+impl ChannelLighting {
+    /// Iluminação a enviar ao dispositivo. Modos por temperatura viram cor fixa da
+    /// faixa atual; sem leitura do sensor, `None` mantém a cor já enviada.
+    pub fn resolved(&self, cpu: Option<f64>, gpu: Option<f64>) -> Option<ChannelLighting> {
+        let temperature = match self.mode {
+            Mode::CpuTemperature => cpu?,
+            Mode::GpuTemperature => gpu?,
+            _ => return Some(self.clone()),
+        };
+        let color = threshold_color(&self.thresholds, temperature)?;
+        Some(ChannelLighting {
+            mode: Mode::Fixed,
+            colors: vec![color],
+            per_led: false,
+            ..self.clone()
+        })
     }
 }
 
@@ -200,6 +284,77 @@ mod tests {
                 per_led: false,
             },
         ]
+    }
+
+    #[test]
+    fn temperature_modes_pick_threshold_band() {
+        let thresholds = default_thresholds();
+        assert_eq!(
+            threshold_color(&thresholds, 40.0),
+            Some(Rgb(0x00, 0xff, 0x00))
+        );
+        assert_eq!(
+            threshold_color(&thresholds, 65.0),
+            Some(Rgb(0x00, 0xff, 0x00))
+        );
+        assert_eq!(
+            threshold_color(&thresholds, 65.5),
+            Some(Rgb(0x84, 0xff, 0x00))
+        );
+        assert_eq!(
+            threshold_color(&thresholds, 95.0),
+            Some(Rgb(0xff, 0x00, 0x00))
+        );
+        assert_eq!(threshold_color(&[], 50.0), None);
+        let lighting = ChannelLighting {
+            mode: Mode::CpuTemperature,
+            brightness: 40,
+            ..Default::default()
+        };
+        let resolved = lighting.resolved(Some(77.0), None).unwrap();
+        assert_eq!(resolved.mode, Mode::Fixed);
+        assert_eq!(resolved.colors, vec![Rgb(0xff, 0xff, 0x00)]);
+        assert_eq!(resolved.brightness, 40);
+        assert!(lighting.resolved(None, Some(50.0)).is_none());
+        let gpu = ChannelLighting {
+            mode: Mode::GpuTemperature,
+            ..Default::default()
+        };
+        assert_eq!(
+            gpu.resolved(None, Some(91.0)).unwrap().colors,
+            vec![Rgb(0xff, 0, 0)]
+        );
+        assert_eq!(
+            ChannelLighting::default().resolved(None, None),
+            Some(ChannelLighting::default())
+        );
+    }
+
+    #[test]
+    fn validates_temperature_thresholds() {
+        let caps = vec![Capability {
+            mode: Mode::CpuTemperature,
+            min_colors: 0,
+            max_colors: 0,
+            speed: false,
+            direction: false,
+            per_led: false,
+        }];
+        let mut lighting = ChannelLighting {
+            mode: Mode::CpuTemperature,
+            colors: vec![],
+            ..Default::default()
+        };
+        lighting.validate(&caps).unwrap();
+        lighting.thresholds.swap(1, 2);
+        assert!(lighting.validate(&caps).is_err());
+        lighting.thresholds = vec![];
+        assert!(lighting.validate(&caps).is_err());
+        lighting.thresholds = vec![Threshold {
+            temperature: f64::NAN,
+            color: Rgb::default(),
+        }];
+        assert!(lighting.validate(&caps).is_err());
     }
 
     #[test]

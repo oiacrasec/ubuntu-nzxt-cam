@@ -163,6 +163,13 @@ para abrir o seletor de cor. O seletor e os desenhos são próprios em egui;
 não foram copiados recursos do CAM. **Proposto:** modos por temperatura e
 seu editor de limites; a observação da interface não confirma sua implementação.
 
+**Implementado em 13/11/2026, sem validação no Ubuntu:** modos **Temperatura do CPU**
+e **Temperatura da GPU** para Logótipo, Anel e Fita, com os limites padrão acima,
+editor `é superior a` (adicionar, remover, até 10 limites crescentes entre 0 e 120 °C)
+e cor da faixa enviada como **Fixo** pelo controlador quando a faixa muda. Escolhas
+não confirmadas no CAM: troca por faixa sem interpolação; na igualdade vale a faixa
+anterior; sem leitura do sensor, a última cor enviada é mantida. Unidade sempre °C.
+
 ## Revisão lado a lado de monitoramento, especificações e Profile Sync
 
 **Evidência da referência Windows, coletada em 12/11/2026, CAM 4.76.8.** Foram

@@ -1,4 +1,5 @@
 {
+  "+ Adicionar limite": "+ Add threshold",
   "+ Adicionar perfil": "+ Add Profile",
   "+1 dia": "+1 Day",
   "A ativação automática não está disponível para Default": "Auto Launch is not available for Default",
@@ -107,6 +108,7 @@
   "Fita": "Strip",
   "Fixo": "Fixed",
   "Fonte": "Source",
+  "Fonte de temperatura:": "Temperatures source:",
   "Formato": "Format",
   "Frequência padrão": "Default Frequency",
   "GPU Detalhes:": "GPU Details:",
@@ -128,6 +130,7 @@
   "Intervalo do governador deve estar entre 250 e 10000 ms": "Governor interval must be between 250 and 10000 ms",
   "Início": "Start Time",
   "LED {numero}": "LED {numero}",
+  "Limite de temperatura deve estar entre 0 e 120 °C": "Temperature threshold must be between 0 and 120 °C",
   "Lista de dispositivos": "Device List",
   "Logótipo": "Logo",
   "Líquido": "Liquid",
@@ -168,10 +171,12 @@
   "O Smart Device aceita no máximo 8 cores por animação": "The Smart Device accepts at most 8 colors per animation",
   "O Smart Device não enviou relatório de status": "The Smart Device sent no status report",
   "O Smart Device não enviou relatório de status após a inicialização": "The Smart Device sent no status report after initialization",
+  "O modo por temperatura aceita de 1 a 10 limites": "Temperature mode accepts 1 to 10 thresholds",
   "O porte não atualiza firmware. Para atualizar, use o NZXT CAM no Windows.": "This port does not update firmware. To update, use NZXT CAM on Windows.",
   "O que é o Profile Sync?": "What is Profile Sync?",
   "Onda de espectro": "Spectrum Wave",
   "Orientação": "Orientation",
+  "Os limites de temperatura devem ser crescentes": "Temperature thresholds must increase",
   "Outra instância do NZXT CAM já está em execução": "Another NZXT CAM instance is already running",
   "Outro programa está usando o dispositivo; feche-o e clique em Atualizar": "Another program is using the device; close it and click Refresh",
   "Padrão": "Default",
@@ -246,6 +251,7 @@
   "Temperatura da CPU": "CPU Temperature",
   "Temperatura da GPU": "GPU Temperature",
   "Temperatura da curva deve estar entre 0 e 100 °C": "Curve temperature must be between 0 and 100 °C",
+  "Temperatura do CPU": "CPU Temperature",
   "Temperatura do líquido": "Liquid Temperature",
   "Temperatura do pacote": "CPU Package Temperature",
   "Temperatura do pacote do CPU": "CPU Package Temperature",
@@ -277,5 +283,6 @@
   "fonte de temperatura indisponível": "temperature source unavailable",
   "perfil inválido": "invalid profile",
   "{dispositivo} Detalhes:": "{dispositivo} Details:",
-  "Áudio": "Audio"
+  "Áudio": "Audio",
+  "é superior a": "is greater than"
 }

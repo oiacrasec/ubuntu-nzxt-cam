@@ -186,6 +186,8 @@ pub struct Engine {
     plan_result: Option<Receiver<Result<String>>>,
     last_profile_check: Option<Instant>,
     profile_stack: crate::profiles::ActivationStack,
+    /// Última iluminação enviada por canal; evita reenviar a mesma cor a cada ciclo.
+    lighting_sent: BTreeMap<String, ChannelLighting>,
     update_job: Option<crate::updater::Job>,
     installation: Option<crate::installation::Installed>,
 }
@@ -226,6 +228,7 @@ impl Engine {
             plan_result: None,
             last_profile_check: None,
             profile_stack: Default::default(),
+            lighting_sent: BTreeMap::new(),
             update_job: None,
             installation: None,
         };
@@ -328,9 +331,14 @@ impl Engine {
             let key = channel_key(&info.id, &channel.name);
             if let Some(lighting) = self.state.config.lighting.get(&key)
                 && lighting.validate(&channel.capabilities).is_ok()
-                && let Err(e) = driver.set_lighting(&channel.name, lighting)
+                && let Some(resolved) = self.resolve_lighting(lighting)
             {
-                state.error = Some(format!("Iluminação {}: {e:#}", channel.name));
+                match driver.set_lighting(&channel.name, &resolved) {
+                    Ok(()) => {
+                        self.lighting_sent.insert(key, resolved);
+                    }
+                    Err(e) => state.error = Some(format!("Iluminação {}: {e:#}", channel.name)),
+                }
             }
         }
         state.status = DeviceStatus::Ready;
@@ -387,6 +395,39 @@ impl Engine {
                 }
             }
         }
+        self.refresh_temperature_lighting();
+    }
+
+    /// Converte modos por temperatura em cor fixa com as leituras atuais.
+    fn resolve_lighting(&self, lighting: &ChannelLighting) -> Option<ChannelLighting> {
+        let sensors = &self.state.sensors;
+        lighting.resolved(
+            sensors.cpu_temperature(self.state.config.ui.cpu_average_temperature),
+            sensors.gpu_temperature(self.state.config.governor.gpu_index),
+        )
+    }
+
+    /// Envia a cor da faixa atual aos canais em modo por temperatura, só quando muda.
+    fn refresh_temperature_lighting(&mut self) {
+        let pending: Vec<(String, ChannelLighting)> = self
+            .state
+            .config
+            .lighting
+            .iter()
+            .filter(|(_, lighting)| lighting.mode.is_temperature())
+            .filter_map(|(key, lighting)| Some((key.clone(), self.resolve_lighting(lighting)?)))
+            .filter(|(key, resolved)| self.lighting_sent.get(key) != Some(resolved))
+            .collect();
+        for (key, resolved) in pending {
+            let Some((id, channel)) = key.rsplit_once('/') else {
+                continue;
+            };
+            if let Some(driver) = self.drivers.get_mut(id)
+                && driver.set_lighting(channel, &resolved).is_ok()
+            {
+                self.lighting_sent.insert(key.clone(), resolved);
+            }
+        }
     }
 
     pub fn reply(&self, ok: bool, message: impl Into<String>) -> Reply {
@@ -440,11 +481,18 @@ impl Engine {
         self.save_config(applying)?;
         for (key, lighting) in &config.lighting {
             let (id, channel) = key.rsplit_once('/').context("Canal inválido")?;
+            // Sem leitura do sensor, o modo por temperatura é enviado no próximo ciclo.
+            let Some(resolved) = self.resolve_lighting(lighting) else {
+                continue;
+            };
             let result = self
                 .drivers
                 .get_mut(id)
                 .context("Dispositivo indisponível")?
-                .set_lighting(channel, lighting);
+                .set_lighting(channel, &resolved);
+            if result.is_ok() {
+                self.lighting_sent.insert(key.clone(), resolved);
+            }
             if let Err(error) = result {
                 // Uma falha pode ocorrer depois de outros canais terem recebido comandos.
                 self.state.config.profiles.active = None;
@@ -631,11 +679,15 @@ impl Engine {
                     .context("Canal de iluminação não encontrado")?;
                 lighting.validate(&physical.capabilities)?;
                 let id = device.info.id.clone();
+                let resolved = self.resolve_lighting(&lighting);
                 let driver = self
                     .drivers
                     .get_mut(&id)
                     .context("Dispositivo indisponível")?;
-                driver.set_lighting(&name, &lighting)?;
+                if let Some(resolved) = resolved {
+                    driver.set_lighting(&name, &resolved)?;
+                    self.lighting_sent.insert(channel.clone(), resolved);
+                }
                 let mut config = self.state.config.clone();
                 config.lighting.insert(channel, lighting);
                 config.profiles.active = None;

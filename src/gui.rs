@@ -372,6 +372,8 @@ fn mode_label(mode: Mode) -> String {
         Mode::WaterCooler => "Refrigerador de água",
         Mode::Loading => "A carregar",
         Mode::Candle => "Vela",
+        Mode::CpuTemperature => "Temperatura do CPU",
+        Mode::GpuTemperature => "Temperatura da GPU",
         other => other.label(),
     })
 }
@@ -1457,6 +1459,14 @@ impl App {
             .inner_margin(16)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
+                if draft.mode.is_temperature() {
+                    // Como no CAM, a lista de limites substitui a prévia.
+                    threshold_editor(ui, draft);
+                    if let Err(e) = draft.validate(&channel.capabilities) {
+                        ui.colored_label(ORANGE, t(&e.to_string()));
+                    }
+                    return;
+                }
                 let per_led_available = channel.leds > 1;
                 ui.horizontal_wrapped(|ui| {
                     if draft.per_led {
@@ -2304,6 +2314,53 @@ impl App {
 }
 
 /// Chip de cor como o do CAM: amostra + valor hexadecimal; clicar abre o seletor.
+/// Lista "é superior a" dos modos por temperatura: limite em °C e cor de cada faixa.
+fn threshold_editor(ui: &mut egui::Ui, lighting: &mut ChannelLighting) {
+    let mut remove = None;
+    let count = lighting.thresholds.len();
+    for (index, threshold) in lighting.thresholds.iter_mut().enumerate() {
+        ui.push_id(("threshold", index), |ui| {
+            ui.horizontal(|ui| {
+                ui.set_min_height(40.0);
+                ui.label(RichText::new(t("é superior a")).size(15.0).color(SECONDARY));
+                ui.add_sized(
+                    [72.0, 32.0],
+                    egui::DragValue::new(&mut threshold.temperature)
+                        .range(0.0..=120.0)
+                        .speed(1.0)
+                        .max_decimals(0)
+                        .suffix(" °C"),
+                );
+                ui.add_space(12.0);
+                color_chip(ui, &mut threshold.color);
+                if count > 1 && ui.add_sized([32.0, 32.0], egui::Button::new("×")).clicked() {
+                    remove = Some(index);
+                }
+            });
+        });
+    }
+    if let Some(index) = remove {
+        lighting.thresholds.remove(index);
+    }
+    if lighting.thresholds.len() < 10
+        && ui
+            .add_sized([160.0, 36.0], egui::Button::new(t("+ Adicionar limite")))
+            .clicked()
+    {
+        let next = lighting.thresholds.last().map_or(
+            crate::lighting::Threshold {
+                temperature: 0.0,
+                color: Rgb(0x00, 0xff, 0x00),
+            },
+            |last| crate::lighting::Threshold {
+                temperature: (last.temperature + 5.0).min(120.0),
+                color: last.color,
+            },
+        );
+        lighting.thresholds.push(next);
+    }
+}
+
 fn color_chip(ui: &mut egui::Ui, color: &mut Rgb) -> egui::Response {
     egui::Frame::new()
         .stroke(Stroke::new(1.0, BORDER))

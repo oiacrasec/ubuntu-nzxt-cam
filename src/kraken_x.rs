@@ -144,6 +144,8 @@ impl Driver for KrakenX {
             cap(Mode::Fading, 2, 8, true, false),
             cap(Mode::Pulse, 1, 8, true, false),
             cap(Mode::SpectrumWave, 0, 0, true, true),
+            cap(Mode::CpuTemperature, 0, 0, false, false),
+            cap(Mode::GpuTemperature, 0, 0, false, false),
         ];
         let ring = vec![
             cap(Mode::Fixed, 1, 1, false, false),
@@ -158,6 +160,8 @@ impl Driver for KrakenX {
             cap(Mode::TaiChi, 2, 2, true, false),
             cap(Mode::WaterCooler, 0, 0, true, false),
             cap(Mode::Loading, 1, 1, true, false),
+            cap(Mode::CpuTemperature, 0, 0, false, false),
+            cap(Mode::GpuTemperature, 0, 0, false, false),
         ];
         vec![
             LightingChannel {
@@ -348,7 +352,7 @@ mod tests {
         let ring = &channels[1].capabilities;
         assert!(!logo.iter().any(|c| c.mode == Mode::Marquee));
         assert!(ring.iter().any(|c| c.mode == Mode::Marquee));
-        for capability in ring {
+        for capability in ring.iter().filter(|c| !c.mode.is_temperature()) {
             assert!(protocol::kraken_mode(capability.mode).is_some());
         }
     }

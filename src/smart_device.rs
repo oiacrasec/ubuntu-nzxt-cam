@@ -101,6 +101,8 @@ impl Driver for SmartDevice {
                 cap(Mode::Alternating, 2, 2, true, true),
                 cap(Mode::Candle, 1, 1, false, false),
                 cap(Mode::Wings, 1, 1, true, false),
+                cap(Mode::CpuTemperature, 0, 0, false, false),
+                cap(Mode::GpuTemperature, 0, 0, false, false),
             ],
             leds: 40,
         }]
@@ -240,7 +242,11 @@ mod tests {
     #[test]
     fn lighting_modes_are_encodable() {
         let sd = device(&Mock::default());
-        for capability in &sd.lighting_channels()[0].capabilities {
+        for capability in sd.lighting_channels()[0]
+            .capabilities
+            .iter()
+            .filter(|c| !c.mode.is_temperature())
+        {
             assert!(protocol::smart_mode(capability.mode).is_some());
         }
     }

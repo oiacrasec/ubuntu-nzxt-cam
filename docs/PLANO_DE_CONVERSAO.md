@@ -75,7 +75,7 @@ ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 2. **Implementado, sem validação no Ubuntu:** slider único de velocidade com
    rótulo abaixo da prévia, amostras de cor e botão de adicionar ao lado, e clique
    no segmento da prévia para editar um LED. Os seletores e desenhos são próprios.
-3. Modos por temperatura (CPU/GPU). Active Profile/Profile Sync já está implementado;
+3. **Concluído em 13/11/2026:** modos por temperatura (CPU/GPU), com editor de limites. Active Profile/Profile Sync já está implementado;
    validar regras por programa/horário e restauração de Default no Ubuntu.
 4. Modos de áudio (Nivelado, Sincronização, Graves) com captura do PipeWire.
 5. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
