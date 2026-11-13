@@ -18,6 +18,7 @@ hardware. As observações do CAM são evidências da referência Windows, não 
 
 - [Compilar, instalar, permissões, telas e CLI](USO.md)
 - [Roteiro de validação no Ubuntu e resultados](VALIDACAO_LOCAL.md)
+- [Configuração de referência e como repeti-la no CAM Windows](CONFIGURACAO_DE_REFERENCIA.md)
 
 ## Engenharia
 
