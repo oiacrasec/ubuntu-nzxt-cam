@@ -106,10 +106,15 @@ capturando só a janela dela. Nada foi executado no Ubuntu.
    áudio (Nivelado, Sincronização, Graves, Ganho) com captura por `parec` ou
    `pw-record` em `src/audio.rs`, Onda da Fita e Respirar por LED no Anel.
    Detalhes em [Referência Windows](REFERENCIA_WINDOWS.md#menus-e-opções-de-cada-modo-13112026).
-5. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
+5. **Revisar no Ubuntu, com o hardware:** o CAM 4.76.9 reenvia ao Kraken, a cada
+   segundo, curvas de 17 pontos (20–100 °C) e rotação fixa de fan e bomba; o porte
+   grava a curva de 36 pontos (20–60 °C) só quando muda. Decidir com base nas
+   regras de segurança térmica antes de mudar
+   ([Referência Windows](REFERENCIA_WINDOWS.md#outros-programas-e-refrigeração-observados-na-captura)).
+6. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
    iluminação, abaixo do Smart Device (pedido do usuário). Memória via SMBus exige
    proteções contra escrita no SPD.
-6. No Ubuntu, pelo usuário: seguir [Validação local](VALIDACAO_LOCAL.md), incluindo
+7. No Ubuntu, pelo usuário: seguir [Validação local](VALIDACAO_LOCAL.md), incluindo
    instalação registrada, consulta de produção, publicação/rollback e reinício
    seguro a partir de Sobre. Campos indisponíveis nas especificações/processos
    são exibidos como `—`, sem simular leituras reais.

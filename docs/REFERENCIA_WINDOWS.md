@@ -217,10 +217,29 @@ usam o mesmo medidor sobre os 40 LEDs do canal, e Onda envia o modo `0x0d`
 (`super-wave` nos fatos de protocolo do liquidctl), ainda sem confirmação no
 hardware. O algoritmo de Ganho é próprio do porte.
 
-Durante a captura, o Kraken recebeu cerca de 36 comandos de refrigeração por
-segundo, sempre iguais (`02 4d 80 14 1e`). O usuário relatou um provável conflito
-do CAM com outro software de iluminação (ASUS ou iCUE) nesta máquina; a origem
-dessa repetição não foi investigada.
+### Outros programas e refrigeração observados na captura
+
+O usuário relatou que os efeitos não aparecem nos LEDs como deveriam e suspeitou
+de conflito com outro software. Nesta máquina rodam ASUS Aura/Armoury Crate
+(`LightingService`, `AacAmbientLighting`), Corsair iCUE 5 (com
+`CorsairCpuIdService`), Creative Sound Blaster Command e Wallpaper Engine. A
+CPUID SDK (`cpuidsdk64.dll`) do iCUE e do `AsusFanControlService` cita
+"NZXT Kraken", e o Armoury Crate lista `1E71/170E` e `1E71/1714` só no
+inventário de diagnóstico. Nas duas capturas (6,5 min), **todos** os relatórios
+enviados ao Kraken e ao Smart Device eram do CAM; nenhum outro programa escreveu
+neles. O que não aparece nos LEDs se explica pelo próprio CAM: na Fita ele não
+anima os modos de áudio e apaga em Onda, e em Graves o Anel não passa de 75% de
+`#51007A`, um roxo escuro. Leitura de sensores por terceiros (como a CPUID SDK)
+não aparece como escrita e não foi descartada. No Ubuntu, o porte detecta outro
+processo com o hidraw aberto (`devices::holders`) e mostra o conflito.
+
+A cada segundo, o CAM 4.76.9 envia ao Kraken uma rajada de 36 relatórios
+`02 4d`: curva do fan com 17 pontos de 20 °C a 100 °C, de 5 em 5 °C
+(`80 14 1e` … `90 64 64`), rotação fixa do fan (`00 00 21`), curva da bomba com
+17 pontos (`c0 14 3c` … `d0 64 64`) e rotação fixa da bomba (`40 00 42`). O porte
+grava a curva interna de 36 pontos de 20 °C a 60 °C só quando ela muda. A
+diferença afeta refrigeração e fica para revisão no Ubuntu, com o hardware.
+Script: `package/usb-captura/rajada.py`.
 
 Arquivos em `package/usb-captura/`: as capturas `captura1-logo-graves.pcap` e
 `captura2-anel.pcap`, os roteiros de captura e de varredura e os scripts de
