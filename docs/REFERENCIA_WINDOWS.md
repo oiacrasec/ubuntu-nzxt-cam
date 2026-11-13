@@ -243,6 +243,13 @@ pôr a logo em Onda de espectro e reiniciar um suspeito por vez, observando a
 logo e os relatórios enviados ao Kraken. No Ubuntu, o porte detecta outro
 processo com o hidraw aberto (`devices::holders`) e mostra o conflito.
 
+Atualização de 13/11/2026: no Ubuntu, sem nenhum desses programas, anel e logo
+também ignoraram todos os comandos. Depois de 1 min com a fonte desligada, ficaram
+apagados desde o boot, antes de qualquer software, e assim continuaram com
+qualquer cor ou modo. O sintoma vem de defeito na iluminação do Kraken, não de
+conflito com outros programas; o teste com USBPcap deixou de ser necessário
+([Validação local](VALIDACAO_LOCAL.md#iluminação-do-kraken-x--13112026)).
+
 A cada segundo, o CAM 4.76.9 envia ao Kraken uma rajada de 36 relatórios
 `02 4d`: curva do fan com 17 pontos de 20 °C a 100 °C, de 5 em 5 °C
 (`80 14 1e` … `90 64 64`), rotação fixa do fan (`00 00 21`), curva da bomba com

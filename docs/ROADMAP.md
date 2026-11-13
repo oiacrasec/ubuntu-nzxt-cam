@@ -15,7 +15,7 @@ distingue código existente, evidência, lacunas e condições de aceitação.
 | Governador e curvas | Implementado, sem validação no Ubuntu | Lógica testada sem hardware; resposta real pendente |
 | Kraken X: status | Implementado, formato confirmado no hardware (Windows) | Leitura no Ubuntu pelo hidraw |
 | Kraken X: curva de segurança e perfis | Implementado, bytes confirmados em CAM e documentação | Perfil interno sobrevive ao encerramento do app |
-| Kraken X: iluminação Ring/Logo | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
+| Kraken X: iluminação Ring/Logo | Implementado; ids de modo só pela documentação | Comparação visual impossível no hardware de referência: LEDs do Kraken com defeito ([validação](VALIDACAO_LOCAL.md#iluminação-do-kraken-x--13112026)) |
 | Smart Device V1: fans e ruído | Implementado, formato confirmado no hardware (Windows) | Rotação fixa e leitura no Ubuntu |
 | Smart Device V1: iluminação | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
 | Iluminação: listas de modos, detalhe, cor por LED | Implementado, sem validação no Ubuntu; edição por LED e slider observados no CAM | Conferir interação e aparência no Ubuntu; [observações da referência](REFERENCIA_WINDOWS.md#detalhe-da-iluminação-observado-no-cam) |

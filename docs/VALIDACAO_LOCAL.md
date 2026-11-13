@@ -136,7 +136,21 @@ foram clicados na janela e mostraram:
 | Áudio | Formato e canais das quatro placas pelo `pactl` |
 | Rede | Wi-Fi com o IPv4 da interface; Ethernet desconectada em `—` |
 
-Iluminação do Kraken X: anel e logo não mudam com nenhum comando (Fixo em
-vermelho, verde e azul, brilho 20% e Onda de espectro), embora o dispositivo aceite
-as escritas e a refrigeração funcione. No Windows o sintoma era o mesmo com o CAM.
-Teste pendente: desligar a fonte por 30 s e repetir. A Fita do Smart Device responde.
+### Iluminação do Kraken X — 13/11/2026
+
+Revisão `e3fae6c`. Anel e logo não mudam com nenhum comando (Fixo em vermelho,
+verde e azul, brilho 20% e Onda de espectro), embora o dispositivo aceite as
+escritas sem erro e a refrigeração funcione pelo mesmo controlador. A Fita do
+Smart Device responde.
+
+| Momento | Anel e logo |
+| --- | --- |
+| Antes de desligar a fonte | Acesos numa cor fixa; nenhum comando muda a cor nem o brilho |
+| Boot após 1 min com a fonte desligada, antes do Ubuntu | Apagados |
+| Depois do autostart (Fixo `#51007A`) | Apagados |
+| Sequência vermelho, verde, azul e Onda de espectro, 8 s cada | Apagados |
+
+Conclusão: defeito na iluminação do próprio Kraken (LEDs ou circuito da tampa da
+bomba). Os LEDs não acendem nem antes de qualquer software escrever, e o sintoma
+era o mesmo no Windows com o CAM. O porte não tem como contornar; a refrigeração
+não é afetada.
