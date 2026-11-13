@@ -213,6 +213,29 @@ pub fn initialize(config: &mut Config) {
     }
 }
 
+/// As páginas de dispositivo editam o perfil associado ao mestre selecionado.
+pub fn remember_channels(config: &mut Config, lighting: bool) {
+    let Some(profile) = config
+        .profiles
+        .active
+        .as_ref()
+        .and_then(|name| config.profiles.sync.get(name))
+    else {
+        return;
+    };
+    if lighting {
+        config
+            .profiles
+            .lighting
+            .insert(profile.lighting.clone(), config.lighting.clone());
+    } else {
+        config
+            .profiles
+            .cooling
+            .insert(profile.cooling.clone(), config.cooling.clone());
+    }
+}
+
 pub fn edit(config: &mut Config, edit: Edit) -> Result<()> {
     let mut next = config.clone();
     initialize(&mut next);

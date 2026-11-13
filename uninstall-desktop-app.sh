@@ -21,7 +21,8 @@ fi
 rm -f -- "$BINARY" \
     "$INSTALL_PREFIX/bin/nzxt-cam.installation.json" \
     "$INSTALL_PREFIX/share/applications/nzxt-cam.desktop" \
-    "$INSTALL_PREFIX/share/icons/hicolor/scalable/apps/nzxt-cam.svg"
+    "$INSTALL_PREFIX/share/icons/hicolor/scalable/apps/nzxt-cam.svg" \
+    "$INSTALL_PREFIX/share/icons/hicolor/512x512/apps/nzxt-cam.png"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nzxt-cam"
 if "$PURGE"; then
     rm -rf -- "$CONFIG_DIR"

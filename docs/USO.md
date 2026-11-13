@@ -87,17 +87,22 @@ o coletor Linux atual fornece CPU e RAM por processo e tráfego agregado de rede
 
 **Implementado, sem validação no Ubuntu.** Em **Configurações** › **Profile Sync**:
 
-1. Salve os ajustes atuais em perfis nomeados de iluminação e de refrigeração.
-2. Adicione um perfil mestre e selecione os dois perfis que ele combina.
-3. Use **Salvar e aplicar**; o seletor **Perfil ativo** da barra superior também
-   ativa perfis já salvos. Uma edição manual de canal passa a **Personalizado**.
-4. Opcionalmente, configure **Por programa** (nome exato do executável Linux,
-   sem caminho) ou **Por horário** (hora local, início incluído e fim excluído).
-   Horários podem cruzar a meia-noite; início e fim iguais são recusados.
+1. Adicione perfis nos seletores das páginas **Iluminação** e **Resfriando**.
+   Os ajustes de canais são salvos no perfil associado ao mestre ativo.
+2. No seletor de **Profile Sync**, **Adicionar perfil** abre o diálogo de nome.
+   Salvar cria e ativa o perfil; a engrenagem permite renomeá-lo ou excluí-lo.
+3. Selecione os perfis de iluminação e refrigeração. A seleção aplica imediatamente;
+   o seletor **Perfil ativo** da barra superior também ativa perfis salvos.
+4. Configure a ativação por programa ou horário nos respectivos diálogos.
+   Programas aceitam múltiplos executáveis, pesquisa local e seleção por arquivo.
+   O catálogo local do Ubuntu não reproduz o catálogo de jogos da NZXT.
+   Horários têm dias da semana, início incluído, fim excluído e **Dia inteiro**.
+   Um intervalo noturno pertence ao dia em que começa. Apenas 00:00–00:00
+   representa o dia inteiro; outros horários iguais representam intervalo vazio.
 
 `Default` não aceita ativação automática nem remoção. As regras são verificadas
-a cada três segundos; entre regras simultâneas vence a primeira em ordem
-alfabética do nome. Ao terminar uma regra, `Default` é restaurado. Seleções
+a cada três segundos. Cada nova ativação entra em uma pilha; quando uma regra
+termina, a seleção anterior é retomada. Seleções
 manuais não são reaplicadas continuamente pela mesma regra: uma nova transição
 é necessária. Na prévia Windows, a ativação é manual e a avaliação automática
 não consulta os processos nem o relógio do computador.
@@ -106,6 +111,9 @@ O controlador valida todos os canais antes de escrever; um canal indisponível
 recusa a ativação. Uma falha durante o envio pode deixar parte da iluminação
 aplicada e é informada; o perfil não é declarado ativo nesse caso. Os pisos,
 fontes e limites térmicos continuam valendo para a refrigeração de qualquer perfil.
+
+Os ícones originais do CAM são usados na bandeja, janela e lançador do Ubuntu,
+por autorização do usuário. Origem e direitos estão em [assets/README.md](../assets/README.md).
 
 ## Atualizar o aplicativo
 

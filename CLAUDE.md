@@ -47,3 +47,11 @@ valide hidraw, hwmon ou udev.
 `package/` contém a cópia do CAM instalado e evidências locais, ignorados pelo Git.
 Não copiar recursos proprietários do CAM (ícones, imagens, traduções) para a
 distribuição sem autorização expressa do usuário registrada aqui.
+
+Em 13/11/2026 o usuário autorizou expressamente usar a logo/ícone original do
+NZXT CAM na bandeja e no sistema. A autorização abrange os dois arquivos de
+ícone em `assets/`, cuja origem está em `assets/README.md`; não transfere direitos
+da NZXT nem abrange outros recursos proprietários.
+
+No mesmo dia, o usuário autorizou também a logo NZXT CAM no canto superior
+esquerdo da interface: `assets/nzxt-cam-wordmark.svg` e sua rasterização PNG.

@@ -244,21 +244,22 @@ fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
     }
 }
 
-/// Ícone do aplicativo e da bandeja: anel e ponto no roxo do tema.
+/// Ícone original do aplicativo, incluído por autorização do usuário.
 pub fn icon_rgba(size: u32) -> Vec<u8> {
-    let mut out = Vec::with_capacity((size * size * 4) as usize);
-    let center = (size as f32 - 1.0) / 2.0;
-    for y in 0..size {
-        for x in 0..size {
-            let d = ((x as f32 - center).powi(2) + (y as f32 - center).powi(2)).sqrt() / center;
-            if (0.62..=0.95).contains(&d) || d <= 0.28 {
-                out.extend_from_slice(&[ORCHID.r(), ORCHID.g(), ORCHID.b(), 255]);
-            } else {
-                out.extend_from_slice(&[0, 0, 0, 0]);
-            }
-        }
-    }
-    out
+    decode_icon(include_bytes!("../assets/nzxt-cam.png"), size)
+}
+
+#[cfg(all(feature = "tray", target_os = "linux"))]
+pub fn tray_icon_rgba(size: u32) -> Vec<u8> {
+    decode_icon(include_bytes!("../assets/nzxt-cam-tray.png"), size)
+}
+
+fn decode_icon(bytes: &[u8], size: u32) -> Vec<u8> {
+    image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+        .expect("Ícone PNG embutido inválido")
+        .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+        .into_rgba8()
+        .into_raw()
 }
 
 pub fn run(controller: Controller, minimized: bool) -> Result<()> {
@@ -294,6 +295,7 @@ pub fn run(controller: Controller, minimized: bool) -> Result<()> {
 
 struct App {
     controller: Controller,
+    wordmark: egui::TextureHandle,
     page: Page,
     section: Section,
     cooling: HashMap<String, ChannelCooling>,
@@ -552,8 +554,26 @@ impl App {
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
+        let wordmark_image = image::load_from_memory_with_format(
+            include_bytes!("../assets/nzxt-cam-wordmark.png"),
+            image::ImageFormat::Png,
+        )
+        .expect("Logo PNG embutida inválida")
+        .into_rgba8();
+        let wordmark = cc.egui_ctx.load_texture(
+            "nzxt-cam-wordmark",
+            egui::ColorImage::from_rgba_unmultiplied(
+                [
+                    wordmark_image.width() as usize,
+                    wordmark_image.height() as usize,
+                ],
+                wordmark_image.as_raw(),
+            ),
+            egui::TextureOptions::LINEAR,
+        );
         let app = Self {
             controller,
+            wordmark,
             page: Page::Monitoring,
             section: Section::General,
             cooling: HashMap::new(),
@@ -624,12 +644,15 @@ impl App {
             )
             .show(root, |ui| {
                 let rect = ui.max_rect();
-                ui.painter().text(
-                    Pos2::new(rect.left(), rect.center().y),
-                    Align2::LEFT_CENTER,
-                    "NZXT CAM",
-                    FontId::proportional(22.0),
-                    TEXT,
+                let logo_size = Vec2::new(124.0, 124.0 * 36.0 / 218.0);
+                ui.painter().image(
+                    self.wordmark.id(),
+                    Rect::from_min_size(
+                        Pos2::new(rect.left(), rect.center().y - logo_size.y / 2.0),
+                        logo_size,
+                    ),
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
                 );
                 ui.scope_builder(
                     egui::UiBuilder::new().max_rect(Rect::from_center_size(
@@ -2707,5 +2730,22 @@ impl eframe::App for App {
                     });
             });
         self.profile_dialog(root.ctx(), &state);
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    #[test]
+    fn original_icons_decode_with_alpha_at_window_and_tray_sizes() {
+        for bytes in [
+            include_bytes!("../assets/nzxt-cam.png").as_slice(),
+            include_bytes!("../assets/nzxt-cam-tray.png").as_slice(),
+        ] {
+            for size in [16, 32, 64] {
+                let pixels = super::decode_icon(bytes, size);
+                assert_eq!(pixels.len(), (size * size * 4) as usize);
+                assert!(pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 0));
+            }
+        }
     }
 }

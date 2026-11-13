@@ -8,7 +8,7 @@ license = "MIT"
 
 [features]
 default = ["gui", "tray", "nvidia"]
-gui = ["dep:eframe"]
+gui = ["dep:eframe", "dep:image"]
 tray = ["gui", "dep:ksni"]
 nvidia = ["dep:nvml-wrapper"]
 
@@ -21,6 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "accesskit"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 nvml-wrapper = { version = "0.11", optional = true }
 
 [target.'cfg(unix)'.dependencies]

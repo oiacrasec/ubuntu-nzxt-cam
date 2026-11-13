@@ -29,12 +29,16 @@ BINARY="$TARGET_DIR/release/nzxt-cam"
 
 BIN_DIR="$INSTALL_PREFIX/bin"
 APP_DIR="$INSTALL_PREFIX/share/applications"
-ICON_DIR="$INSTALL_PREFIX/share/icons/hicolor/scalable/apps"
+ICON_DIR="$INSTALL_PREFIX/share/icons/hicolor/512x512/apps"
 mkdir -p -- "$BIN_DIR" "$APP_DIR" "$ICON_DIR"
 # Troca atômica: o processo em execução conserva o binário anterior até reiniciar.
 install -m 0755 -- "$BINARY" "$BIN_DIR/.nzxt-cam.new"
 mv -f -- "$BIN_DIR/.nzxt-cam.new" "$BIN_DIR/nzxt-cam"
-install -m 0644 -- assets/nzxt-cam.svg "$ICON_DIR/nzxt-cam.svg"
+install -m 0644 -- assets/nzxt-cam.png "$ICON_DIR/nzxt-cam.png"
+rm -f -- "$INSTALL_PREFIX/share/icons/hicolor/scalable/apps/nzxt-cam.svg"
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t "$INSTALL_PREFIX/share/icons/hicolor" >/dev/null 2>&1 || true
+fi
 EXEC="${BIN_DIR// /\\s}/nzxt-cam"
 cat > "$APP_DIR/.nzxt-cam.desktop.new" <<EOF
 [Desktop Entry]

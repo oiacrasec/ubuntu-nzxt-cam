@@ -84,8 +84,11 @@ da janela do CAM 4.76.8 (somente a janela, com autorização do usuário) e o te
 posição dos elementos, paleta (fundo `(26,28,30)`, menu `(18,18,20)`, bordas
 `(52,56,60)`, controles `(73,72,81)`, texto `(232,235,237)`, roxo `(100,10,146)`,
 orquídea `(191,76,191)`), tamanhos e rótulos. Ícones são desenhos próprios em
-código; logotipos, ilustrações e as fontes licenciadas pela NZXT (Akkurat, Gotham)
-não são copiados nem extraídos da instalação. **Fora da interface, a pedido do
+código. Por autorização expressa em 13/11/2026, os ícones originais do aplicativo
+e da bandeja e a logo do cabeçalho são a exceção documentada em
+[assets/README.md](../assets/README.md).
+Ilustrações e as fontes licenciadas pela NZXT (Akkurat, Gotham) continuam fora
+da distribuição. **Fora da interface, a pedido do
 usuário:** Áudio, Suporte e Beta. **Sem equivalente no hardware ou no porte:**
 Privacidade (o porte não coleta dados), Graphics API (tela LCD), Serial Devices.
 **Atualização após a revisão do usuário:** Profile Sync e edição por LED foram
@@ -104,7 +107,8 @@ recursos, confere `--build-info` e só então chama o instalador local existente
 O registro guarda prefixo, revisão, recursos e SHA-256. A publicação verifica o
 checksum e conserva backup do executável/registro para restaurar em caso de falha.
 Ao contrário do bundle de recursos da Facecam, este porte usa sua instalação atual
-de binário, ícone e atalho; não há bundle de fundos nem recursos proprietários.
+de binário, ícone e atalho; não há bundle de fundos. Os dois ícones originais
+autorizados são instalados conforme a nota de origem em `assets/README.md`.
 
 O controlador continua ativo durante download/compilação. Reiniciar é uma ação
 separada e depende de preparar a saída térmica dos canais sem erro. A nova instância

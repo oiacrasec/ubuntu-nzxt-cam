@@ -203,6 +203,47 @@ mesmo id de Respirar `0x07` e passo zero, preenchendo o vetor GRB por LED. Não 
 copiado código do liquidctl nem criado novo comando. O layout foi testado com
 transporte simulado; aplicação física desse modo ainda não foi validada no Ubuntu.
 
+## Inspeção detalhada de Profile Sync — 13/11/2026
+
+**Evidência da referência Windows, CAM 4.76.8.** Com autorização expressa, foi
+criado e ativado `Inspecao temporaria Codex`, permitindo abrir as opções que
+ficam desabilitadas em Default. Foram observados:
+
+- Página com seletor mestre, ajuda, Auto Launch e Selected Profiles; sem
+  formulários inline de captura nem botão Salvar e aplicar.
+- Add/Edit Profile Sync: nome (limite de 50 caracteres), Salvar, Cancelar ou
+  Excluir, e fechamento pelo X. Criar ativa imediatamente o novo mestre.
+- With Program: pesquisa, Connect/Remover, lista de programas conectados,
+  Browse Programs (seletor nativo de executáveis), Salvar e Cancelar.
+- At Specific Time: sete dias, início, fim, All Day e +1 Day. Sem dias,
+  a borda fica vermelha e Salvar é desabilitado. A engrenagem reabre a regra.
+- Setas de Selected Profiles navegam para a página do dispositivo. Adicionar
+  perfis nessas páginas oferece nome e Duplicate existing profile.
+
+As condições por programa e horário e a pilha transitória de ativações foram
+também conferidas por análise estática do bundle original, sem copiar código.
+Capturas locais: `package/cam-sync-*.png`, `cam-light-profile-*.png` e
+`cam-cooling-add-dialog.png`. A pesquisa e conexão foram canceladas; uma regra
+temporária de sábado foi salva e depois removida.
+
+**Restauração confirmada na interface:** perfil temporário excluído, somente
+Default no seletor, iluminação Caio e refrigeração Padrão. Logótipo Fixo
+`#51007A`, Anel Fixo e Fita Respirar. Evidências em
+`package/cam-sync-deletion-verified.png` e `cam-light-restored-logo.png`.
+
+## Logo do cabeçalho — 13/11/2026
+
+As capturas do CAM 4.76.8, incluindo `package/cam-sync-restored.png`, mostram
+a logo NZXT CAM no canto superior esquerdo. O recurso correspondente está em
+`assets/originals/logo nzxt cam.svg` no `app.asar`, com proporção 218 × 36.
+Por pedido expresso do usuário, foi incluído no porte: SVG original e PNG
+transparente com preenchimento branco para o tema escuro. Origem e autorização
+estão em [assets/README.md](../assets/README.md) e `CLAUDE.md`.
+
+O texto desenhado anteriormente foi substituído pela imagem, com 124 px de
+largura e proporção preservada. Build Windows e clippy Linux passaram; a prévia
+foi aberta e capturada em `package/preview-original-wordmark.png`.
+
 ## Protocolo
 
 Levantado em 12/11/2026. Cada comando de escrita só entra no driver quando duas

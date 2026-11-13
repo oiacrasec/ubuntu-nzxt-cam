@@ -374,7 +374,7 @@ fn apply(state: &mut Snapshot, request: Request) -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("Canal de iluminação não encontrado"))?;
             lighting.validate(&physical.capabilities)?;
             state.config.lighting.insert(channel, lighting);
-            state.config.profiles.active = None;
+            crate::profiles::remember_channels(&mut state.config, true);
         }
         Request::SetCooling { channel, cooling } => {
             let physical = state
@@ -389,7 +389,7 @@ fn apply(state: &mut Snapshot, request: Request) -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("Canal de refrigeração não encontrado"))?;
             cooling.points(physical.limits)?;
             state.config.cooling.insert(channel, cooling);
-            state.config.profiles.active = None;
+            crate::profiles::remember_channels(&mut state.config, false);
         }
         Request::UpdateUi { ui } => {
             state.config.ui = ui;

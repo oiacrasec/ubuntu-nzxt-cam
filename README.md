@@ -49,5 +49,7 @@ para GPUs NVIDIA, da NVML do driver instalado.
 - [Decisões de implementação](docs/DECISOES.md)
 
 Projeto independente, sem afiliação com a NZXT. Código sob [MIT](LICENSE).
+Os ícones e a logo originais da NZXT, incluídos por pedido do usuário, têm
+origem e direitos registrados em [assets/README.md](assets/README.md).
 A cópia do CAM e as evidências locais ficam em `package/`, ignorado pelo Git, e não
 integram a distribuição.

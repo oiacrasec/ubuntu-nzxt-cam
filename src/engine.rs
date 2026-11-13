@@ -617,7 +617,7 @@ impl Engine {
                     self.apply_profile(crate::profiles::prepare(&next, &name)?)?;
                     self.profile_stack.manual(&name);
                 } else {
-                    if matches!(&edit, crate::profiles::Edit::Save { name, .. } if config.profiles.active.as_ref() == Some(name))
+                    if matches!(&edit, crate::profiles::Edit::Save { name, profile } if config.profiles.active.as_ref() == Some(name) && self.state.config.profiles.sync.get(name).is_some_and(|old| old.lighting != profile.lighting || old.cooling != profile.cooling))
                     {
                         config.profiles.active = None;
                     }
@@ -665,7 +665,7 @@ impl Engine {
                 cooling.points(physical.limits)?;
                 let mut config = self.state.config.clone();
                 config.cooling.insert(channel, cooling);
-                config.profiles.active = None;
+                crate::profiles::remember_channels(&mut config, false);
                 self.save_config(config)?;
                 self.cycle();
                 Ok("Perfil de refrigeração aplicado".into())
@@ -690,7 +690,7 @@ impl Engine {
                 }
                 let mut config = self.state.config.clone();
                 config.lighting.insert(channel, lighting);
-                config.profiles.active = None;
+                crate::profiles::remember_channels(&mut config, true);
                 self.save_config(config)?;
                 Ok("Iluminação aplicada".into())
             }
@@ -1127,7 +1127,14 @@ mod profile_tests {
                 })
                 .ok
         );
-        assert!(engine.state.config.profiles.active.is_none());
+        assert_eq!(
+            engine.state.config.profiles.active.as_deref(),
+            Some("Default")
+        );
+        assert_eq!(
+            engine.state.config.profiles.lighting["Padrão"],
+            engine.state.config.lighting
+        );
     }
 
     #[test]

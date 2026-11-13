@@ -18,12 +18,12 @@ impl ksni::Tray for Tray {
     }
 
     fn icon_name(&self) -> String {
-        crate::desktop::APP_ID.into()
+        String::new()
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
         let size = 32;
-        let argb = crate::gui::icon_rgba(size as u32)
+        let argb = crate::gui::tray_icon_rgba(size as u32)
             .as_chunks::<4>()
             .0
             .iter()

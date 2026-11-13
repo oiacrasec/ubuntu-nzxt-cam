@@ -10,8 +10,8 @@ Na continuação entraram documentação, prévia Windows, interface, Profile Sy
 (pilha de ativações, vários programas por regra, dias da semana e horários que
 cruzam a meia-noite) e atualização pelo commit de produção; ver a tabela abaixo.
 Nada foi executado no Ubuntu.
-Verificado no Windows: `cargo test --no-default-features --features gui` (74),
-`cargo test --no-default-features` (73) e
+Verificado no Windows em 13/11/2026: `cargo test --no-default-features --features gui` (78),
+`cargo test --no-default-features` (76) e
 `cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings` nos dois builds.
 
 Também foi acrescentada, a pedido do usuário, uma [prévia visual no Windows](USO.md#conferir-o-layout-no-windows):
@@ -22,6 +22,12 @@ E/S; não usa o controlador real. A janela foi aberta e capturada em
 Os testes incluem isolamento da prévia, preflight do Profile Sync, recusa de saída
 térmica com falha, codificação por LED da Fita em Respirar e atualização via Git local.
 Isso não valida o funcionamento no Ubuntu.
+
+Ícones originais de bandeja e aplicativo foram incluídos por pedido expresso do
+usuário, com origem em [assets/README.md](../assets/README.md) e autorização em
+`CLAUDE.md`. A prévia foi reconstruída e aberta com o ícone na janela, registrada
+em `package/preview-original-icon.png`. O instalador publica o PNG no hicolor;
+a bandeja usa pixmap embutido. A integração real com o desktop Ubuntu está pendente.
 
 Na revisão lado a lado pedida pelo usuário, foram corrigidos ícones de rede e
 ordenação, seis colunas de processos, cliques/detalhes de todos os tipos de
@@ -94,7 +100,7 @@ capturando só a janela dela. Nada foi executado no Ubuntu.
    rótulo abaixo da prévia, amostras de cor e botão de adicionar ao lado, e clique
    no segmento da prévia para editar um LED. Os seletores e desenhos são próprios.
 3. **Concluído em 13/11/2026:** modos por temperatura (CPU/GPU), com editor de limites. Active Profile/Profile Sync já está implementado;
-   validar regras por programa/horário e restauração de Default no Ubuntu.
+   validar regras por programa/horário e retorno à seleção anterior no Ubuntu.
 4. Modos de áudio (Nivelado, Sincronização, Graves) com captura do PipeWire.
 5. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
    iluminação, abaixo do Smart Device (pedido do usuário). Memória via SMBus exige
