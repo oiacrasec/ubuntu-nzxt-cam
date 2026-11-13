@@ -990,6 +990,39 @@ mod profile_tests {
         }
     }
 
+    #[test]
+    fn temperature_lighting_resends_only_when_the_band_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, writes) = fixture(dir.path());
+        engine.state.config.lighting.insert(
+            "kraken:mock/logo".into(),
+            ChannelLighting {
+                mode: crate::lighting::Mode::CpuTemperature,
+                colors: vec![],
+                ..Default::default()
+            },
+        );
+        engine.state.sensors.cpu.package_temperature = None;
+        engine.refresh_temperature_lighting();
+        assert_eq!(
+            writes.load(Ordering::SeqCst),
+            0,
+            "sem sensor nada é enviado"
+        );
+        engine.state.sensors.cpu.package_temperature = Some(40.0);
+        engine.refresh_temperature_lighting();
+        assert_eq!(writes.load(Ordering::SeqCst), 1);
+        engine.state.sensors.cpu.package_temperature = Some(55.0);
+        engine.refresh_temperature_lighting();
+        assert_eq!(writes.load(Ordering::SeqCst), 1, "mesma faixa, sem reenvio");
+        engine.state.sensors.cpu.package_temperature = Some(66.0);
+        engine.refresh_temperature_lighting();
+        assert_eq!(writes.load(Ordering::SeqCst), 2);
+        let sent = &engine.lighting_sent["kraken:mock/logo"];
+        assert_eq!(sent.mode, crate::lighting::Mode::Fixed);
+        assert_eq!(sent.colors, vec![crate::lighting::Rgb(0x84, 0xff, 0x00)]);
+    }
+
     fn fixture(root: &std::path::Path) -> (Engine, Arc<AtomicUsize>) {
         let system = System {
             sys: root.join("sys"),

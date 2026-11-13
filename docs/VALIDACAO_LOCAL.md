@@ -64,6 +64,20 @@ feche liquidctl, CoolerControl ou qualquer outro programa que use os dispositivo
     instalação de teste isolada. O controlador deve continuar ativo durante o build;
     o reinício deve esperar o estado térmico de saída e liberar o controlador anterior.
 
+15. **Gráfico de Resfriando.** Abra o detalhe de um canal: fonte de temperatura
+    acima do gráfico, linhas em 0/25/50/75/100%, eixo de 10° a 100°, curva verde
+    até 100° e marcador tracejado com a leitura atual. Arraste um ponto de
+    **Personalizado** e confira que não desce abaixo do piso do canal.
+16. **Iluminação por temperatura.** No Logótipo, escolha **Temperatura do CPU**:
+    a lista "é superior a" substitui a prévia. Rode uma carga
+    (`stress-ng --cpu 0 -t 60`) e confira a troca de cor ao cruzar 65 °C e a
+    volta ao terminar. Confira também **Temperatura da GPU** e compare a cor
+    com o CAM no Windows (faixas e igualdade ainda não confirmadas no CAM).
+17. **Diálogos do Profile Sync.** Em um perfil diferente de Default, abra
+    **Com programa** (busca, **Procurar programas**, conectar/remover) e
+    **Em horário específico** (dias em quatro colunas, Início/Fim alinhados,
+    **Dia inteiro**, **+1 dia** quando o fim é menor que o início).
+
 Registre também o que falhar: comando, mensagem exibida, `--status` e, para
 falhas de protocolo, a saída de `journalctl --user -b | grep nzxt-cam`.
 
