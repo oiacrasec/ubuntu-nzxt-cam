@@ -442,12 +442,22 @@ fn profile_label(profile: &Profile) -> String {
 }
 
 fn mode_label(mode: Mode) -> String {
+    // Nomes do menu do CAM 4.76.8 em português.
     t(match mode {
         Mode::Off => "Desligado",
         Mode::Fixed => "Fixo",
         Mode::Breathing => "Respirar",
-        Mode::Fading => "Esmaecer",
+        Mode::Fading => "Desvanecer",
+        Mode::Marquee => "Painel",
+        Mode::CoveringMarquee => "Painel rolante",
         Mode::Pulse => "Pulsar",
+        Mode::SpectrumWave => "Onda de espectro",
+        Mode::Alternating => "Alternado",
+        Mode::Wings => "Asas",
+        Mode::TaiChi => "Tai Chi",
+        Mode::WaterCooler => "Refrigerador de água",
+        Mode::Loading => "A carregar",
+        Mode::Candle => "Vela",
         other => other.label(),
     })
 }
@@ -1341,33 +1351,23 @@ impl App {
                         draft.mode = mode;
                         draft.colors.truncate(capability.max_colors);
                         while draft.colors.len() < capability.min_colors {
-                            draft.colors.push(Rgb(0x7f, 0x00, 0xff));
+                            draft.colors.push(Rgb(0x51, 0x00, 0x7a));
                         }
                         if !capability.direction {
                             draft.backwards = false;
                         }
-                        if draft.validate(&channel.capabilities).is_ok() {
-                            self.dispatch(Request::SetLighting {
-                                channel: key.to_owned(),
-                                lighting: draft.clone(),
-                            });
+                        if mode != Mode::Fixed {
+                            draft.per_led = false;
                         }
                     }
                     ui.add_space(8.0);
                     let sun = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover()).0;
                     draw_icon(ui.painter(), sun, Icon::Sun, SECONDARY);
-                    let slider = ui.add_sized(
+                    ui.add_sized(
                         [90.0, 18.0],
                         egui::Slider::new(&mut draft.brightness, 0..=100).show_value(false),
-                    );
-                    if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
-                        let mut lighting = applied.clone();
-                        lighting.brightness = draft.brightness;
-                        self.dispatch(Request::SetLighting {
-                            channel: key.to_owned(),
-                            lighting,
-                        });
-                    }
+                    )
+                    .on_hover_text(format!("{}%", draft.brightness));
                     let dot = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover()).0;
                     ui.painter()
                         .circle_stroke(dot.center(), 5.0, Stroke::new(1.0, SECONDARY));
@@ -1379,7 +1379,15 @@ impl App {
             self.expanded = if expanded { None } else { Some(key.to_owned()) };
         }
         if expanded {
-            self.lighting_detail(ui, channel, key, draft, applied);
+            self.lighting_detail(ui, channel, draft);
+        }
+        // Como no CAM, cada mudança é aplicada; aqui, ao soltar o mouse.
+        let released = ui.input(|i| !i.pointer.any_down());
+        if released && draft != applied && draft.validate(&channel.capabilities).is_ok() {
+            self.dispatch(Request::SetLighting {
+                channel: key.to_owned(),
+                lighting: draft.clone(),
+            });
         }
         let (line, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
@@ -1391,36 +1399,67 @@ impl App {
         &self,
         ui: &mut egui::Ui,
         channel: &LightingChannel,
-        key: &str,
         draft: &mut ChannelLighting,
-        applied: &ChannelLighting,
     ) {
-        let Some(capability) = channel.capabilities.iter().find(|c| c.mode == draft.mode) else {
+        let Some(capability) = channel
+            .capabilities
+            .iter()
+            .find(|c| c.mode == draft.mode)
+            .cloned()
+        else {
             return;
         };
         egui::Frame::new()
             .fill(DARKEST)
-            .inner_margin(12)
+            .inner_margin(16)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                if capability.max_colors > 0 {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new(t("Cores")).color(SECONDARY));
-                        for color in draft.colors.iter_mut() {
-                            let mut rgb = [color.0, color.1, color.2];
-                            ui.color_edit_button_srgb(&mut rgb);
-                            *color = Rgb(rgb[0], rgb[1], rgb[2]);
+                let per_led_available = draft.mode == Mode::Fixed && channel.leds > 1;
+                ui.horizontal_wrapped(|ui| {
+                    if !draft.per_led {
+                        let mut remove = None;
+                        for (index, color) in draft.colors.iter_mut().enumerate() {
+                            if color_chip(ui, color).secondary_clicked()
+                                && index >= capability.min_colors
+                            {
+                                remove = Some(index);
+                            }
                         }
-                        if draft.colors.len() < capability.max_colors && ui.button("+").clicked() {
-                            draft.colors.push(Rgb(0xff, 0xff, 0xff));
+                        if let Some(index) = remove {
+                            draft.colors.remove(index);
                         }
-                        if draft.colors.len() > capability.min_colors.max(1)
-                            && ui.button("−").clicked()
+                        if capability.max_colors > 1
+                            && draft.colors.len() < capability.max_colors
+                            && ui.button(t("Adicionar cor")).clicked()
                         {
-                            draft.colors.pop();
+                            draft
+                                .colors
+                                .push(draft.colors.last().copied().unwrap_or(Rgb(0x51, 0, 0x7a)));
+                        }
+                    }
+                    if per_led_available {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let changed = toggle_switch(ui, &mut draft.per_led);
+                            ui.label(
+                                RichText::new(t("Personalizar cores LED"))
+                                    .size(15.0)
+                                    .color(SECONDARY),
+                            );
+                            if changed && draft.per_led && draft.led_colors.len() < channel.leds {
+                                let base = draft.colors.first().copied().unwrap_or_default();
+                                draft.led_colors.resize(channel.leds, base);
+                            }
+                        });
+                    }
+                });
+                if draft.per_led {
+                    ui.horizontal_wrapped(|ui| {
+                        for color in draft.led_colors.iter_mut().take(channel.leds) {
+                            color_chip(ui, color);
                         }
                     });
                 }
+                lighting_preview(ui, channel, draft);
                 if capability.speed {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(t("Velocidade")).color(SECONDARY));
@@ -1439,27 +1478,6 @@ impl App {
                 if let Err(e) = &validation {
                     ui.colored_label(ORANGE, t(&e.to_string()));
                 }
-                ui.horizontal(|ui| {
-                    let changed = draft != applied;
-                    if ui
-                        .add_enabled(
-                            changed && validation.is_ok(),
-                            egui::Button::new(t("Aplicar")).fill(PURPLE),
-                        )
-                        .clicked()
-                    {
-                        self.dispatch(Request::SetLighting {
-                            channel: key.to_owned(),
-                            lighting: draft.clone(),
-                        });
-                    }
-                    if ui
-                        .add_enabled(changed, egui::Button::new(t("Descartar")))
-                        .clicked()
-                    {
-                        *draft = applied.clone();
-                    }
-                });
             });
     }
 
@@ -2231,6 +2249,99 @@ impl App {
                     ui.allocate_ui(Vec2::new(140.0, 50.0), |ui| cell(ui, label, value));
                 }
             });
+        }
+    }
+}
+
+/// Chip de cor como o do CAM: amostra + valor hexadecimal; clicar abre o seletor.
+fn color_chip(ui: &mut egui::Ui, color: &mut Rgb) -> egui::Response {
+    egui::Frame::new()
+        .stroke(Stroke::new(1.0, BORDER))
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let mut rgb = [color.0, color.1, color.2];
+                let response = ui.color_edit_button_srgb(&mut rgb);
+                *color = Rgb(rgb[0], rgb[1], rgb[2]);
+                ui.label(
+                    RichText::new(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]))
+                        .size(14.0),
+                );
+                response
+            })
+            .inner
+        })
+        .inner
+}
+
+/// Interruptor em pílula (trilho cinza e bolinha clara; roxo quando ligado).
+fn toggle_switch(ui: &mut egui::Ui, on: &mut bool) -> bool {
+    let size = Vec2::new(50.0, 20.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    if response.clicked() {
+        *on = !*on;
+    }
+    let progress = ui.ctx().animate_bool_responsive(response.id, *on);
+    let track = if *on { PURPLE } else { CONTROL };
+    ui.painter().rect_filled(rect, 2, track);
+    let knob_width = rect.height() + 6.0;
+    let x = egui::lerp(rect.left()..=rect.right() - knob_width, progress);
+    let knob = Rect::from_min_size(
+        Pos2::new(x, rect.top()),
+        Vec2::new(knob_width, rect.height()),
+    );
+    ui.painter().rect_filled(knob.shrink(2.0), 2, SECONDARY);
+    response.clicked()
+}
+
+/// Prévia própria do canal com as cores atuais: anel de 8 LEDs, logo ou fita.
+fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &ChannelLighting) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 170.0), Sense::hover());
+    let painter = ui.painter();
+    let color = |i: usize| -> Color32 {
+        let rgb = if lighting.per_led {
+            lighting.led_colors.get(i).copied()
+        } else {
+            lighting
+                .colors
+                .get(i % lighting.colors.len().max(1))
+                .copied()
+        }
+        .unwrap_or(Rgb(60, 60, 60));
+        let scale = f32::from(lighting.brightness.min(100)) / 100.0;
+        Color32::from_rgb(
+            (f32::from(rgb.0) * scale) as u8,
+            (f32::from(rgb.1) * scale) as u8,
+            (f32::from(rgb.2) * scale) as u8,
+        )
+    };
+    let c = rect.center();
+    match channel.name.as_str() {
+        "ring" => {
+            for i in 0..8 {
+                let a0 =
+                    i as f32 * std::f32::consts::TAU / 8.0 - std::f32::consts::FRAC_PI_2 + 0.08;
+                let a1 = a0 + std::f32::consts::TAU / 8.0 - 0.16;
+                let points: Vec<Pos2> = (0..=10)
+                    .map(|k| {
+                        let a = a0 + (a1 - a0) * k as f32 / 10.0;
+                        c + Vec2::new(a.cos(), a.sin()) * 52.0
+                    })
+                    .collect();
+                painter.add(egui::Shape::line(points, Stroke::new(12.0, color(i))));
+            }
+        }
+        "logo" => {
+            painter.circle_stroke(c, 52.0, Stroke::new(10.0, Color32::from_gray(230)));
+            painter.circle_filled(c, 26.0, color(0));
+        }
+        _ => {
+            let leds = channel.leds.min(40);
+            let width = (rect.width() - 40.0).min(800.0);
+            for i in 0..leds {
+                let x = c.x - width / 2.0 + width * (i as f32 + 0.5) / leds as f32;
+                painter.circle_filled(Pos2::new(x, c.y), 5.0, color(i));
+            }
         }
     }
 }

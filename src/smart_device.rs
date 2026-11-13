@@ -86,21 +86,22 @@ impl Driver for SmartDevice {
     }
 
     fn lighting_channels(&self) -> Vec<LightingChannel> {
+        // Lista e ordem do menu do CAM 4.76.8 para a Fita do Smart Device.
         vec![LightingChannel {
             name: "led".into(),
             capabilities: vec![
-                cap(Mode::Off, 0, 0, false, false),
                 cap(Mode::Fixed, 1, 1, false, false),
+                cap(Mode::Breathing, 1, 8, true, false),
                 cap(Mode::Fading, 2, 8, true, false),
-                cap(Mode::SpectrumWave, 0, 0, true, true),
                 cap(Mode::Marquee, 1, 1, true, true),
                 cap(Mode::CoveringMarquee, 1, 8, true, true),
-                cap(Mode::Alternating, 2, 2, true, true),
                 cap(Mode::Pulse, 1, 8, true, false),
-                cap(Mode::Breathing, 1, 8, true, false),
+                cap(Mode::SpectrumWave, 0, 0, true, true),
+                cap(Mode::Alternating, 2, 2, true, true),
                 cap(Mode::Candle, 1, 1, false, false),
                 cap(Mode::Wings, 1, 1, true, false),
             ],
+            leds: 40,
         }]
     }
 

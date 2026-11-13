@@ -18,6 +18,10 @@ distingue código existente, evidência, lacunas e condições de aceitação.
 | Kraken X: iluminação Ring/Logo | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
 | Smart Device V1: fans e ruído | Implementado, formato confirmado no hardware (Windows) | Rotação fixa e leitura no Ubuntu |
 | Smart Device V1: iluminação | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
+| Iluminação: listas de modos, detalhe, cor por LED | Implementado, conforme os menus do CAM 4.76.8 | Edição por LED no CAM ainda não observada ligada |
+| Iluminação: modos por temperatura (CPU/GPU) e de áudio (Nivelado, Sincronização, Graves) | Proposto | Observar no CAM a escala de cores; áudio exige captura do PipeWire |
+| Active Profile e Profile Sync | Proposto | Seletor e "Add Profile" observados no CAM |
+| LEDs de memória, placa-mãe e placa de som | Proposto, pedido do usuário em 12/11/2026 | Só iluminação, abaixo do Smart Device. Memória G.Skill via SMBus exige proteções (endereço errado pode corromper o SPD); placa-mãe ASUS Aura USB `0b05:18a3`; AE-5 Plus sem protocolo documentado |
 | Governador CPU/GPU → fans | Proposto | Resposta e falha de fonte em ensaio controlado |
 | Profile Sync | Proposto | Ativação por programa e por horário |
 | Interface (layout CAM, Modo Mini, bandeja) | Implementado, layout e paleta das telas do CAM 4.76.8 | Conferir no Ubuntu contra as capturas; Profile Sync pendente |

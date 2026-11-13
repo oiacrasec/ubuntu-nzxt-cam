@@ -27,6 +27,8 @@ pub struct CoolingChannel {
 pub struct LightingChannel {
     pub name: String,
     pub capabilities: Vec<Capability>,
+    /// LEDs endereçáveis do canal (logo 1, anel 8, fita 40).
+    pub leds: usize,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

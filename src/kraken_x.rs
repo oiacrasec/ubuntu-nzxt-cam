@@ -136,32 +136,38 @@ impl Driver for KrakenX {
     }
 
     fn lighting_channels(&self) -> Vec<LightingChannel> {
-        let common = vec![
-            cap(Mode::Off, 0, 0, false, false),
+        // Listas e ordem dos menus do CAM 4.76.8 (Logótipo e Anel do Kraken X).
+        let logo = vec![
             cap(Mode::Fixed, 1, 1, false, false),
-            cap(Mode::Fading, 2, 8, true, false),
-            cap(Mode::SpectrumWave, 0, 0, true, true),
             cap(Mode::Breathing, 1, 8, true, false),
+            cap(Mode::Fading, 2, 8, true, false),
             cap(Mode::Pulse, 1, 8, true, false),
+            cap(Mode::SpectrumWave, 0, 0, true, true),
         ];
-        let mut ring = common.clone();
-        ring.extend([
+        let ring = vec![
+            cap(Mode::Fixed, 1, 1, false, false),
+            cap(Mode::Breathing, 1, 8, true, false),
+            cap(Mode::Fading, 2, 8, true, false),
             cap(Mode::Marquee, 1, 1, true, true),
             cap(Mode::CoveringMarquee, 1, 8, true, true),
+            cap(Mode::Pulse, 1, 8, true, false),
+            cap(Mode::SpectrumWave, 0, 0, true, true),
             cap(Mode::Alternating, 2, 2, true, true),
+            cap(Mode::Wings, 1, 1, true, false),
             cap(Mode::TaiChi, 2, 2, true, false),
             cap(Mode::WaterCooler, 0, 0, true, false),
             cap(Mode::Loading, 1, 1, true, false),
-            cap(Mode::Wings, 1, 1, true, false),
-        ]);
+        ];
         vec![
             LightingChannel {
                 name: "logo".into(),
-                capabilities: common,
+                capabilities: logo,
+                leds: 1,
             },
             LightingChannel {
                 name: "ring".into(),
                 capabilities: ring,
+                leds: 8,
             },
         ]
     }

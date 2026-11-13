@@ -103,6 +103,9 @@ pub struct ChannelLighting {
     pub moving: bool,
     /// Brilho de 0 a 100%, aplicado às cores antes do envio.
     pub brightness: u8,
+    /// "Personalizar cores LED": uma cor por LED (somente no modo Fixo).
+    pub per_led: bool,
+    pub led_colors: Vec<Rgb>,
 }
 
 impl Default for ChannelLighting {
@@ -115,6 +118,8 @@ impl Default for ChannelLighting {
             led_size: 3,
             moving: false,
             brightness: 100,
+            per_led: false,
+            led_colors: Vec::new(),
         }
     }
 }
@@ -142,6 +147,12 @@ impl ChannelLighting {
                 capability.min_colors,
                 capability.max_colors
             );
+        }
+        if self.per_led && self.mode != Mode::Fixed {
+            bail!("Cores por LED só existem no modo Fixo");
+        }
+        if self.led_colors.len() > 40 {
+            bail!("No máximo 40 cores por LED");
         }
         if self.brightness > 100 {
             bail!("Brilho deve estar entre 0 e 100%");
