@@ -24,11 +24,12 @@ Depois abra **NZXT CAM** no menu e prepare o acesso em **Configurações** ›
 
 | Área do CAM | No porte |
 | --- | --- |
-| Monitoramento de CPU, GPU, RAM, armazenamento e rede | Proposto |
-| Refrigeração: perfis Silent, Performance, Fixed e Custom por canal | Proposto |
-| Iluminação: modos do Kraken X (Ring, Logo) e do Smart Device | Proposto |
-| Ruído do gabinete (sensor do Smart Device V1) | Proposto |
-| Profile Sync, Modo Mini, bandeja e início com a sessão | Proposto |
+| Monitoramento de CPU, GPU, RAM, armazenamento e rede | Implementado, sem validação no Ubuntu |
+| Refrigeração: perfis Silent, Performance, Fixed e Custom por canal | Implementado, sem validação no Ubuntu |
+| Iluminação: modos do Kraken X (Ring, Logo) e do Smart Device | Implementado; modos por temperatura e áudio pendentes |
+| Ruído do gabinete (sensor do Smart Device V1) | Implementado, sem validação no Ubuntu |
+| Profile Sync, bandeja e início com a sessão | Implementado, sem validação no Ubuntu; Mini Mode retirado a pedido do usuário |
+| Atualização do aplicativo em Sobre | Implementado, sem ensaio de instalação no Ubuntu |
 | Atualização de firmware, conta, telemetria e loja | Fora do escopo |
 | Kraken com LCD, periféricos, monitores, PSU, áudio e captura | Fora do escopo atual (sem hardware para validar) |
 

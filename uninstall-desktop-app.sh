@@ -19,6 +19,7 @@ if [[ -x "$BINARY" ]]; then
     "$BINARY" --remove-autostart || true
 fi
 rm -f -- "$BINARY" \
+    "$INSTALL_PREFIX/bin/nzxt-cam.installation.json" \
     "$INSTALL_PREFIX/share/applications/nzxt-cam.desktop" \
     "$INSTALL_PREFIX/share/icons/hicolor/scalable/apps/nzxt-cam.svg"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nzxt-cam"

@@ -2,7 +2,7 @@
 //! vez de sysfs e `/proc`, sem privilégios. Módulos de RAM individuais exigem
 //! `dmidecode` como root e por isso aparecem como total.
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CpuDetails {
@@ -22,6 +22,11 @@ pub struct Specs {
     pub storage: Vec<String>,
     pub audio: Vec<String>,
     pub network: Vec<String>,
+    #[serde(default)]
+    pub memory_modules: Vec<String>,
+    /// Campos por identidade da lista; dados ausentes são exibidos como indisponíveis.
+    #[serde(default)]
+    pub details: BTreeMap<String, Vec<(String, String)>>,
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -120,6 +125,126 @@ pub fn read_specs(sys: &Path, proc_: &Path) -> Specs {
             };
             specs.network.push(format!("{kind} ({name})"));
         }
+    }
+    if !specs.cpu.name.is_empty() {
+        specs.details.insert(
+            "cpu".into(),
+            vec![
+                ("Fabricante".into(), specs.cpu.vendor.clone()),
+                ("Nome do código".into(), "—".into()),
+                (
+                    "Velocidade padrão do clock".into(),
+                    specs
+                        .cpu
+                        .base_mhz
+                        .map_or("—".into(), |v| format!("{v:.0} MHz")),
+                ),
+                ("Tipo de soquete".into(), "—".into()),
+                ("TDP".into(), "—".into()),
+            ],
+        );
+    }
+    if specs.motherboard.is_some() {
+        specs.details.insert(
+            "board".into(),
+            vec![
+                (
+                    "Modelo".into(),
+                    read(&dmi.join("board_name")).unwrap_or_else(|| "—".into()),
+                ),
+                ("Chipset".into(), "—".into()),
+                ("Southbridge".into(), "—".into()),
+                (
+                    "Versão do BIOS".into(),
+                    read(&dmi.join("bios_version")).unwrap_or_else(|| "—".into()),
+                ),
+                (
+                    "Data do BIOS".into(),
+                    read(&dmi.join("bios_date")).unwrap_or_else(|| "—".into()),
+                ),
+            ],
+        );
+    }
+    if let Some(bytes) = specs.memory_total_bytes {
+        specs.memory_modules.push("Memória do sistema".into());
+        specs.details.insert(
+            "ram:0".into(),
+            vec![
+                ("Modelo".into(), "—".into()),
+                (
+                    "Capacidade".into(),
+                    format!("{:.1} GB", bytes as f64 / 1024f64.powi(3)),
+                ),
+                ("Frequência padrão".into(), "—".into()),
+                ("Tipo".into(), "—".into()),
+                ("Tempos".into(), "—".into()),
+            ],
+        );
+    }
+    let mounts = fs::read_to_string(proc_.join("mounts")).unwrap_or_default();
+    if let Ok(entries) = fs::read_dir(sys.join("block")) {
+        for entry in entries.flatten() {
+            let Some(model) = read(&entry.path().join("device/model")) else {
+                continue;
+            };
+            let Some(index) = specs.storage.iter().position(|value| value == &model) else {
+                continue;
+            };
+            let device = format!("/dev/{}", entry.file_name().to_string_lossy());
+            let format = mounts
+                .lines()
+                .find_map(|line| {
+                    let fields: Vec<_> = line.split_whitespace().collect();
+                    (fields.len() > 2 && fields[0].starts_with(&device))
+                        .then(|| fields[2].to_owned())
+                })
+                .unwrap_or_else(|| "—".into());
+            let capacity = read(&entry.path().join("size"))
+                .and_then(|v| v.parse::<u64>().ok())
+                .map_or("—".into(), |sectors| {
+                    format!("{:.0} GB", sectors as f64 * 512.0 / 1e9)
+                });
+            specs.details.insert(
+                format!("storage:{index}"),
+                vec![
+                    ("Nome".into(), model),
+                    (
+                        "Fabricante".into(),
+                        read(&entry.path().join("device/vendor")).unwrap_or_else(|| "—".into()),
+                    ),
+                    ("Formato".into(), format),
+                    ("Capacidade".into(), capacity),
+                ],
+            );
+        }
+    }
+    for (index, name) in specs.audio.iter().enumerate() {
+        specs.details.insert(
+            format!("audio:{index}"),
+            vec![
+                ("Nome".into(), name.clone()),
+                ("Formato".into(), "—".into()),
+                ("Número de canais".into(), "—".into()),
+            ],
+        );
+    }
+    for (index, name) in specs.network.iter().enumerate() {
+        specs.details.insert(
+            format!("network:{index}"),
+            vec![
+                ("Nome do adaptador".into(), name.clone()),
+                (
+                    "Tipo de conexão".into(),
+                    if name.starts_with("Wi-Fi") {
+                        "Wireless"
+                    } else {
+                        "Ethernet"
+                    }
+                    .into(),
+                ),
+                ("Endereço IP".into(), "—".into()),
+            ],
+        );
     }
     specs
 }

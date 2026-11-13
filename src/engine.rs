@@ -26,6 +26,23 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum Request {
+    RefreshPrograms,
+    BrowsePrograms {
+        directory: PathBuf,
+    },
+    CheckUpdates,
+    InstallUpdate,
+    RestartAfterUpdate,
+    SaveProfileAndActivate {
+        name: String,
+        profile: crate::profiles::SyncProfile,
+    },
+    EditProfile {
+        edit: crate::profiles::Edit,
+    },
+    ActivateProfile {
+        name: String,
+    },
     Status,
     Refresh,
     SetCooling {
@@ -102,6 +119,14 @@ pub struct DeviceState {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Snapshot {
+    #[serde(default)]
+    pub programs: Vec<crate::profiles::Program>,
+    #[serde(default)]
+    pub program_browser: crate::profiles::ProgramBrowser,
+    #[serde(default)]
+    pub local_time: Option<crate::profiles::LocalTime>,
+    #[serde(default)]
+    pub updates: crate::updater::State,
     pub config: Config,
     pub devices: Vec<DeviceState>,
     pub sensors: Readings,
@@ -159,6 +184,10 @@ pub struct Engine {
     last_discovery: Option<Instant>,
     next_plan: u64,
     plan_result: Option<Receiver<Result<String>>>,
+    last_profile_check: Option<Instant>,
+    profile_stack: crate::profiles::ActivationStack,
+    update_job: Option<crate::updater::Job>,
+    installation: Option<crate::installation::Installed>,
 }
 
 fn channel_key(device: &str, channel: &str) -> String {
@@ -174,13 +203,15 @@ impl Engine {
     }
 
     pub fn with_system(config_path: PathBuf, system: System, opener: Opener) -> Result<Self> {
-        let config = Config::load(&config_path)?;
+        let mut config = Config::load(&config_path)?;
+        crate::profiles::initialize(&mut config);
         let sensors = Sensors::new(system.sys.clone(), system.proc_.clone());
         let mut engine = Self {
             state: Snapshot {
                 config,
                 languages: crate::i18n::available(&config_path),
                 specs: crate::specs::read_specs(&system.sys, &system.proc_),
+                local_time: crate::profiles::local_time(),
                 ..Default::default()
             },
             shared: SharedState::default(),
@@ -193,7 +224,18 @@ impl Engine {
             last_discovery: None,
             next_plan: 1,
             plan_result: None,
+            last_profile_check: None,
+            profile_stack: Default::default(),
+            update_job: None,
+            installation: None,
         };
+        match crate::installation::Installed::discover() {
+            Ok(installed) => {
+                engine.state.updates.installed = installed.is_some();
+                engine.installation = installed;
+            }
+            Err(error) => engine.state.updates.message = format!("{error:#}"),
+        }
         engine.refresh_permissions();
         engine.state.autostart = crate::desktop::autostart_enabled().unwrap_or(false);
         engine.discover();
@@ -392,8 +434,158 @@ impl Engine {
         Ok(())
     }
 
+    fn apply_profile(&mut self, config: Config) -> Result<String> {
+        let mut applying = self.state.config.clone();
+        applying.profiles.active = None;
+        self.save_config(applying)?;
+        for (key, lighting) in &config.lighting {
+            let (id, channel) = key.rsplit_once('/').context("Canal inválido")?;
+            let result = self
+                .drivers
+                .get_mut(id)
+                .context("Dispositivo indisponível")?
+                .set_lighting(channel, lighting);
+            if let Err(error) = result {
+                // Uma falha pode ocorrer depois de outros canais terem recebido comandos.
+                self.state.config.profiles.active = None;
+                bail!(
+                    "Aplicação de perfil interrompida; iluminação pode estar parcialmente aplicada: {error:#}"
+                );
+            }
+        }
+        self.save_config(config)?;
+        self.cycle();
+        for device in &self.state.devices {
+            if device.status != DeviceStatus::Ready
+                || device
+                    .channels
+                    .values()
+                    .any(|channel| channel.error.is_some())
+            {
+                self.state.config.profiles.active = None;
+                self.save_config(self.state.config.clone())?;
+                bail!("Falha ao aplicar refrigeração do perfil; confira os canais");
+            }
+        }
+        Ok("Perfil ativado".into())
+    }
+
     fn dispatch(&mut self, request: Request) -> Result<String> {
         match request {
+            Request::RefreshPrograms => {
+                self.state.programs = crate::profiles::catalog(&self.system.proc_);
+                Ok(String::new())
+            }
+            Request::BrowsePrograms { directory } => {
+                self.state.program_browser = crate::profiles::browse(directory)?;
+                Ok(String::new())
+            }
+            Request::CheckUpdates => {
+                if self.update_job.is_none() {
+                    self.update_job = Some(crate::updater::Job::check());
+                    self.state.updates.phase = crate::updater::Phase::Checking;
+                    self.state.updates.message = "Verificando atualizações…".into();
+                }
+                Ok("Consultando atualizações".into())
+            }
+            Request::InstallUpdate => {
+                if self.update_job.is_some()
+                    || self.state.updates.busy()
+                    || self.state.permissions.running
+                {
+                    bail!("Aguarde a operação atual terminar");
+                }
+                if self.state.updates.phase != crate::updater::Phase::Available {
+                    bail!("Verifique as atualizações primeiro");
+                }
+                let installed = self
+                    .installation
+                    .clone()
+                    .context("Use o instalador desktop para habilitar atualizações")?;
+                let candidate = self
+                    .state
+                    .updates
+                    .candidate
+                    .clone()
+                    .context("Atualização não selecionada")?;
+                let log = crate::updater::log_path()?;
+                self.update_job = Some(crate::updater::Job::install(
+                    candidate,
+                    installed,
+                    log.clone(),
+                ));
+                self.state.updates.phase = crate::updater::Phase::Installing;
+                self.state.updates.log = Some(log);
+                Ok("Atualização iniciada; a refrigeração continua ativa".into())
+            }
+            Request::RestartAfterUpdate => {
+                if self.state.updates.phase != crate::updater::Phase::RestartRequired
+                    || self.state.permissions.running
+                {
+                    bail!("Não há atualização pronta para reiniciar");
+                }
+                let installed = self
+                    .installation
+                    .clone()
+                    .context("Instalação não registrada")?;
+                self.prepare_safe_exit()?;
+                let gui =
+                    cfg!(feature = "gui") && !std::env::args_os().any(|arg| arg == "--headless");
+                crate::updater::restart(&installed, &self.config_path, gui)?;
+                self.drivers.clear();
+                self.state.quit = true;
+                Ok("Reiniciando".into())
+            }
+            Request::SaveProfileAndActivate { name, profile } => {
+                let mut next = self.state.clone();
+                crate::profiles::edit(
+                    &mut next.config,
+                    crate::profiles::Edit::Save {
+                        name: name.clone(),
+                        profile,
+                    },
+                )?;
+                let config = crate::profiles::prepare(&next, &name)?;
+                let message = self.apply_profile(config)?;
+                if self.state.config.profiles.active.as_deref() != Some(self.profile_stack.target())
+                {
+                    self.profile_stack.manual(&name);
+                }
+                Ok(message)
+            }
+            Request::EditProfile { edit } => {
+                let mut config = self.state.config.clone();
+                crate::profiles::edit(&mut config, edit.clone())?;
+                if matches!(&edit, crate::profiles::Edit::Delete { name } if self.state.config.profiles.active.as_ref() == Some(name))
+                {
+                    let mut next = self.state.clone();
+                    next.config = config;
+                    let name = next
+                        .config
+                        .profiles
+                        .active
+                        .clone()
+                        .unwrap_or_else(|| "Default".into());
+                    self.apply_profile(crate::profiles::prepare(&next, &name)?)?;
+                    self.profile_stack.manual(&name);
+                } else {
+                    if matches!(&edit, crate::profiles::Edit::Save { name, .. } if config.profiles.active.as_ref() == Some(name))
+                    {
+                        config.profiles.active = None;
+                    }
+                    self.save_config(config)?;
+                }
+                if let crate::profiles::Edit::Rename { name, new_name } = edit {
+                    self.profile_stack.rename(&name, &new_name);
+                }
+                Ok("Perfil salvo".into())
+            }
+            Request::ActivateProfile { name } => {
+                let config = crate::profiles::prepare(&self.state, &name)?;
+                let message = self.apply_profile(config)?;
+                self.profile_stack.manual(&name);
+                Ok(message)
+            }
             Request::Status => Ok(String::new()),
             Request::Refresh => {
                 self.drivers.clear();
@@ -425,6 +617,7 @@ impl Engine {
                 cooling.points(physical.limits)?;
                 let mut config = self.state.config.clone();
                 config.cooling.insert(channel, cooling);
+                config.profiles.active = None;
                 self.save_config(config)?;
                 self.cycle();
                 Ok("Perfil de refrigeração aplicado".into())
@@ -445,6 +638,7 @@ impl Engine {
                 driver.set_lighting(&name, &lighting)?;
                 let mut config = self.state.config.clone();
                 config.lighting.insert(channel, lighting);
+                config.profiles.active = None;
                 self.save_config(config)?;
                 Ok("Iluminação aplicada".into())
             }
@@ -571,7 +765,8 @@ impl Engine {
     }
 
     /// Deixa cada canal num estado seguro sem o aplicativo.
-    pub fn shutdown(&mut self) {
+    fn prepare_safe_exit(&mut self) -> Result<()> {
+        let mut errors = Vec::new();
         let config = self.state.config.clone();
         for device in &self.state.devices {
             let Some(driver) = self.drivers.get_mut(&device.info.id) else {
@@ -595,9 +790,19 @@ impl Engine {
                     driver.set_duty(&channel.name, config.governor.exit_duty)
                 };
                 if let Err(e) = result {
-                    eprintln!("Encerramento de {key}: {e:#}");
+                    errors.push(format!("Encerramento de {key}: {e:#}"));
                 }
             }
+        }
+        if !errors.is_empty() {
+            bail!("{}", errors.join("; "));
+        }
+        Ok(())
+    }
+
+    pub fn shutdown(&mut self) {
+        if let Err(error) = self.prepare_safe_exit() {
+            eprintln!("{error:#}");
         }
         self.drivers.clear();
     }
@@ -605,6 +810,40 @@ impl Engine {
     /// Chamado pelo laço do controlador; retorna `true` se o estado mudou.
     pub fn tick(&mut self) -> bool {
         let mut changed = false;
+        while let Some(event) = self.update_job.as_ref().and_then(|job| job.poll()) {
+            let complete = !matches!(&event, crate::updater::Event::Progress(_));
+            self.state.updates.accept(event);
+            if complete {
+                self.update_job = None;
+            }
+            changed = true;
+        }
+        if self
+            .last_profile_check
+            .is_none_or(|time| time.elapsed() >= Duration::from_secs(3))
+        {
+            self.last_profile_check = Some(Instant::now());
+            self.state.local_time = crate::profiles::local_time();
+            let rules = &self.state.config.profiles;
+            let matched = rules.matching(
+                &crate::profiles::programs(&self.system.proc_),
+                self.state.local_time,
+            );
+            let next = self.profile_stack.reconcile(rules, matched);
+            if next.target() != self.profile_stack.target() {
+                let result = crate::profiles::prepare(&self.state, next.target())
+                    .and_then(|config| self.apply_profile(config));
+                match result {
+                    Ok(_) => self.profile_stack = next,
+                    Err(error) => {
+                        self.state.error = Some(format!("Ativação automática: {error:#}"))
+                    }
+                }
+                changed = true;
+            } else {
+                self.profile_stack = next;
+            }
+        }
         if let Some(rx) = &self.plan_result
             && let Ok(result) = rx.try_recv()
         {
@@ -647,5 +886,180 @@ impl Drop for Engine {
         if !self.drivers.is_empty() {
             self.shutdown();
         }
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct FakeDriver {
+        metadata: Box<dyn Driver>,
+        writes: Arc<AtomicUsize>,
+        fail_exit: bool,
+    }
+    impl Driver for FakeDriver {
+        fn info(&self) -> &Info {
+            self.metadata.info()
+        }
+        fn cooling_channels(&self) -> Vec<CoolingChannel> {
+            self.metadata.cooling_channels()
+        }
+        fn lighting_channels(&self) -> Vec<LightingChannel> {
+            self.metadata.lighting_channels()
+        }
+        fn initialize(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn status(&mut self) -> Result<Status> {
+            Ok(Status {
+                liquid_temperature: Some(33.0),
+                ..Default::default()
+            })
+        }
+        fn set_profile(&mut self, _: &str, _: &[Point]) -> Result<()> {
+            if self.fail_exit {
+                bail!("Fixture: falha no estado de saída");
+            }
+            self.writes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn set_duty(&mut self, _: &str, _: u8) -> Result<()> {
+            if self.fail_exit {
+                bail!("Fixture: falha no estado de saída");
+            }
+            self.writes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn set_lighting(&mut self, _: &str, _: &ChannelLighting) -> Result<()> {
+            self.writes.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    fn fixture(root: &std::path::Path) -> (Engine, Arc<AtomicUsize>) {
+        let system = System {
+            sys: root.join("sys"),
+            dev: root.join("dev"),
+            proc_: root.join("proc"),
+            rule: root.join("rule"),
+        };
+        let mut engine = Engine::with_system(
+            root.join("config.json"),
+            system,
+            Box::new(|_| bail!("No hardware in tests")),
+        )
+        .unwrap();
+        let info = Info {
+            kind: devices::Kind::KrakenX,
+            id: "kraken:mock".into(),
+            node: root.join("fake-hidraw"),
+            serial: "mock".into(),
+            phys: String::new(),
+        };
+        let metadata = driver::open(info.clone(), Box::new(devices::Mock::default()));
+        let writes = Arc::new(AtomicUsize::new(0));
+        engine.state.devices.push(DeviceState {
+            info: info.clone(),
+            name: "Kraken X".into(),
+            status: DeviceStatus::Ready,
+            error: None,
+            cooling: metadata.cooling_channels(),
+            lighting: metadata.lighting_channels(),
+            last_status: Some(Status {
+                liquid_temperature: Some(33.0),
+                ..Default::default()
+            }),
+            channels: Default::default(),
+        });
+        engine.drivers.insert(
+            info.id,
+            Box::new(FakeDriver {
+                metadata,
+                writes: writes.clone(),
+                fail_exit: false,
+            }),
+        );
+        (engine, writes)
+    }
+
+    #[test]
+    fn invalid_profile_is_rejected_before_any_device_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, writes) = fixture(dir.path());
+        let invalid = ChannelLighting {
+            brightness: 101,
+            ..Default::default()
+        };
+        engine
+            .state
+            .config
+            .profiles
+            .lighting
+            .get_mut("Padrão")
+            .unwrap()
+            .insert("kraken:mock/ring".into(), invalid);
+        let reply = engine.handle(Request::ActivateProfile {
+            name: "Default".into(),
+        });
+        assert!(!reply.ok);
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
+        let reply = engine.handle(Request::SaveProfileAndActivate {
+            name: "Broken".into(),
+            profile: crate::profiles::SyncProfile {
+                lighting: "missing".into(),
+                ..Default::default()
+            },
+        });
+        assert!(!reply.ok);
+        assert!(!engine.state.config.profiles.sync.contains_key("Broken"));
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn applies_profile_through_controller_and_persists_active_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, writes) = fixture(dir.path());
+        let reply = engine.handle(Request::ActivateProfile {
+            name: "Default".into(),
+        });
+        assert!(reply.ok, "{}", reply.message);
+        assert!(writes.load(Ordering::SeqCst) >= 2);
+        assert_eq!(
+            Config::load(&dir.path().join("config.json"))
+                .unwrap()
+                .profiles
+                .active
+                .as_deref(),
+            Some("Default")
+        );
+        assert!(
+            engine
+                .handle(Request::SetLighting {
+                    channel: "kraken:mock/ring".into(),
+                    lighting: Default::default()
+                })
+                .ok
+        );
+        assert!(engine.state.config.profiles.active.is_none());
+    }
+
+    #[test]
+    fn failed_exit_preparation_keeps_the_controller_for_safe_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut engine, writes) = fixture(dir.path());
+        let info = engine.state.devices[0].info.clone();
+        engine.drivers.insert(
+            info.id.clone(),
+            Box::new(FakeDriver {
+                metadata: driver::open(info, Box::new(devices::Mock::default())),
+                writes,
+                fail_exit: true,
+            }),
+        );
+        assert!(engine.prepare_safe_exit().is_err());
+        assert!(!engine.state.quit);
+        assert_eq!(engine.drivers.len(), 1);
     }
 }

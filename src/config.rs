@@ -168,6 +168,7 @@ pub struct Config {
     /// Chave: `<id do dispositivo>/<canal>`, por exemplo `kraken_x:SERIAL/pump`.
     pub cooling: BTreeMap<String, ChannelCooling>,
     pub lighting: BTreeMap<String, ChannelLighting>,
+    pub profiles: crate::profiles::Profiles,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -180,6 +181,7 @@ impl Default for Config {
             governor: GovernorConfig::default(),
             cooling: BTreeMap::new(),
             lighting: BTreeMap::new(),
+            profiles: Default::default(),
             extra: BTreeMap::new(),
         }
     }
@@ -213,6 +215,7 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        self.profiles.validate()?;
         if !crate::i18n::valid_tag(&self.ui.language) {
             bail!("Código de idioma inválido");
         }

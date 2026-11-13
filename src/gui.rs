@@ -1,19 +1,25 @@
 //! Interface no layout do NZXT CAM 4.76.8: barra superior, menu lateral, coluna
 //! central de cartões. Cores e medidas vêm do tema do CAM (`lib/colors.ts`) e das
 //! telas capturadas; os ícones são desenhos próprios, sem recursos da NZXT.
+#[cfg(unix)]
+use crate::ipc::Controller;
+#[cfg(not(unix))]
+use crate::preview::Controller;
 use crate::{
     config::TemperatureUnit,
     curves::{self, ChannelCooling, Point, Profile, Source},
     driver::{ChannelKind, CoolingChannel, LightingChannel},
     engine::{DeviceState, DeviceStatus, Request, Snapshot},
     i18n::{tr as t, trf},
-    ipc::Controller,
     lighting::{ChannelLighting, Mode, Rgb, Speed},
     permissions,
 };
 use anyhow::Result;
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+#[path = "gui_profiles.rs"]
+mod profile_ui;
+use profile_ui::ProfileDialog;
 
 // Tema escuro do CAM.
 const BLACK: Color32 = Color32::from_rgb(0, 0, 0);
@@ -69,7 +75,7 @@ impl Page {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
     General,
-    Mini,
+    Profiles,
     Firmware,
     Access,
     About,
@@ -78,16 +84,16 @@ enum Section {
 impl Section {
     const ALL: [Self; 5] = [
         Self::General,
-        Self::Mini,
         Self::Firmware,
         Self::Access,
+        Self::Profiles,
         Self::About,
     ];
 
     fn label(self) -> &'static str {
         match self {
             Self::General => "Geral",
-            Self::Mini => "Mini Mode",
+            Self::Profiles => "Profile Sync",
             Self::Firmware => "NZXT Firmware",
             Self::Access => "Acesso aos dispositivos",
             Self::About => "Sobre",
@@ -103,99 +109,6 @@ fn page_visible(page: Page, panels: &crate::config::Panels) -> bool {
         Page::Cooling => panels.cooling,
         Page::Settings => true,
     }
-}
-
-/// Leituras do Mini Mode selecionadas em Configurações, na ordem do CAM.
-fn mini_items(state: &Snapshot) -> Vec<(String, String)> {
-    let readings = &state.config.ui.mini.readings;
-    let unit = state.config.ui.temperature_unit;
-    let sensors = &state.sensors;
-    let gpu = sensors.gpus.get(state.config.governor.gpu_index);
-    let percent = |v: Option<f64>| v.map_or("—".into(), |v| format!("{v:.0}%"));
-    let mhz = |v: Option<f64>| v.map_or("—".into(), |v| format!("{v:.0} MHz"));
-    let pump = state
-        .devices
-        .iter()
-        .filter_map(|d| d.last_status.as_ref())
-        .flat_map(|s| s.fans.iter())
-        .find(|f| f.channel == "pump")
-        .and_then(|f| f.rpm);
-    let liquid = state
-        .devices
-        .iter()
-        .filter_map(|d| d.last_status.as_ref()?.liquid_temperature)
-        .next();
-    let mut items = Vec::new();
-    let mut push = |enabled: bool, label: &str, value: String| {
-        if enabled {
-            items.push((t(label), value));
-        }
-    };
-    push(
-        readings.cpu_temperature,
-        "Temperatura da CPU",
-        unit.format(sensors.cpu_temperature(state.config.ui.cpu_average_temperature)),
-    );
-    push(
-        readings.cpu_load,
-        "Carga da CPU",
-        percent(sensors.cpu.load_percent),
-    );
-    push(
-        readings.cpu_clock,
-        "Clock da CPU",
-        mhz(sensors.cpu.clock_mhz),
-    );
-    push(
-        readings.cpu_fan,
-        "Ventilador da CPU",
-        pump.map_or("—".into(), |v| format!("{v} RPM")),
-    );
-    push(
-        readings.gpu_temperature,
-        "Temperatura da GPU",
-        unit.format(gpu.and_then(|g| g.temperature)),
-    );
-    push(
-        readings.gpu_load,
-        "Carga da GPU",
-        percent(gpu.and_then(|g| g.load_percent)),
-    );
-    push(
-        readings.gpu_clock,
-        "Clock da GPU",
-        mhz(gpu.and_then(|g| g.clock_mhz)),
-    );
-    push(
-        readings.gpu_fan,
-        "Ventilador da GPU",
-        percent(gpu.and_then(|g| g.fan_percent)),
-    );
-    push(
-        readings.ram_load,
-        "Carga da RAM",
-        percent(
-            sensors
-                .memory
-                .as_ref()
-                .map(|m| m.used_bytes as f64 * 100.0 / m.total_bytes.max(1) as f64),
-        ),
-    );
-    push(
-        readings.network,
-        "Rede",
-        format!(
-            "{} ↓ {} ↑",
-            rate(sensors.network.receive_bytes_per_second),
-            rate(sensors.network.transmit_bytes_per_second)
-        ),
-    );
-    push(
-        readings.liquid_temperature,
-        "Temperatura do líquido",
-        unit.format(liquid),
-    );
-    items
 }
 
 fn backup_path() -> std::path::PathBuf {
@@ -216,8 +129,11 @@ enum Icon {
     Ring,
     Logo,
     Strip,
-    Mini,
     Refresh,
+    ArrowUp,
+    ArrowDown,
+    ChevronUp,
+    ChevronDown,
 }
 
 /// Ícones próprios, traçados com primitivas (sem arte da NZXT).
@@ -234,6 +150,22 @@ fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             .collect()
     };
     match icon {
+        Icon::ArrowUp | Icon::ArrowDown | Icon::ChevronUp | Icon::ChevronDown => {
+            let down = matches!(icon, Icon::ArrowDown | Icon::ChevronDown);
+            let direction = if down { 1.0 } else { -1.0 };
+            let tip = c + Vec2::new(0.0, r * 0.65 * direction);
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(-r * 0.55, -r * 0.1 * direction),
+                    tip,
+                    c + Vec2::new(r * 0.55, -r * 0.1 * direction),
+                ],
+                stroke,
+            ));
+            if matches!(icon, Icon::ArrowUp | Icon::ArrowDown) {
+                painter.line_segment([tip, c - Vec2::new(0.0, r * 0.8 * direction)], stroke);
+            }
+        }
         Icon::Chart => {
             let p = |x: f32, y: f32| c + Vec2::new(x, y) * r;
             painter.line_segment([p(-0.9, -0.9), p(-0.9, 0.9)], stroke);
@@ -302,25 +234,6 @@ fn draw_icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 painter.circle_filled(c + Vec2::new(x * r, 0.0), r * 0.1, color);
             }
         }
-        Icon::Mini => {
-            painter.rect_stroke(
-                Rect::from_min_size(
-                    c + Vec2::new(-r * 0.9, -r * 0.5),
-                    Vec2::new(r * 1.2, r * 1.2),
-                ),
-                1,
-                stroke,
-                egui::StrokeKind::Middle,
-            );
-            painter.rect_filled(
-                Rect::from_min_size(
-                    c + Vec2::new(r * 0.0, -r * 0.9),
-                    Vec2::new(r * 0.9, r * 0.7),
-                ),
-                1,
-                color,
-            );
-        }
         Icon::Refresh => {
             let points = arc(r * 0.75, 0.5, 5.6);
             let end = *points.last().unwrap_or(&c);
@@ -355,7 +268,11 @@ pub fn run(controller: Controller, minimized: bool) -> Result<()> {
     })?;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("NZXT CAM")
+            .with_title(if cfg!(unix) {
+                "NZXT CAM"
+            } else {
+                "NZXT CAM — Prévia (dados simulados)"
+            })
             .with_app_id(crate::desktop::APP_ID)
             .with_icon(egui::IconData {
                 rgba: icon_rgba(64),
@@ -382,18 +299,15 @@ struct App {
     cooling: HashMap<String, ChannelCooling>,
     lighting: HashMap<String, ChannelLighting>,
     expanded: Option<String>,
-    spec_detail: SpecDetail,
+    expanded_lighting: HashSet<String>,
+    spec_detail: String,
+    process_sort: usize,
+    process_descending: bool,
+    profile_dialog: Option<ProfileDialog>,
+    last_profile: Option<(String, String, String)>,
     show_requests: u64,
-    mini: bool,
-    mini_key: Option<(bool, crate::config::MiniConfig, bool)>,
     #[cfg(all(feature = "tray", target_os = "linux"))]
     tray: Option<ksni::blocking::Handle<crate::tray::Tray>>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SpecDetail {
-    Cpu,
-    Gpu,
 }
 
 fn key(device: &DeviceState, channel: &str) -> String {
@@ -549,7 +463,8 @@ fn rate(value: Option<f64>) -> String {
     match value {
         None => "—".into(),
         Some(v) if v >= 1e6 => format!("{:.1}MB/s", v / 1e6),
-        Some(v) => format!("{:.0}KB/s", v / 1e3),
+        Some(v) if v >= 1e3 => format!("{:.0}KB/s", v / 1e3),
+        Some(v) => format!("{v:.0}B/s"),
     }
 }
 
@@ -635,23 +550,24 @@ impl App {
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
-        let mut app = Self {
+        let app = Self {
             controller,
             page: Page::Monitoring,
             section: Section::General,
             cooling: HashMap::new(),
             lighting: HashMap::new(),
             expanded: None,
-            spec_detail: SpecDetail::Cpu,
+            expanded_lighting: HashSet::new(),
+            spec_detail: "cpu".into(),
+            process_sort: 1,
+            process_descending: true,
+            profile_dialog: None,
+            last_profile: profile_ui::selection(&state),
             show_requests: state.show_requests,
-            mini: false,
-            mini_key: None,
             #[cfg(all(feature = "tray", target_os = "linux"))]
             tray,
         };
-        if state.config.ui.mini_mode {
-            app.set_mini(&cc.egui_ctx, &state);
-        }
+        // Campos antigos de Mini Mode continuam legíveis, mas não ativam a interface removida.
         app
     }
 
@@ -688,35 +604,6 @@ impl App {
         self.dispatch(Request::UpdateUi { ui });
     }
 
-    fn set_mini(&mut self, ctx: &egui::Context, state: &Snapshot) {
-        let ui = &state.config.ui;
-        self.mini = ui.mini_mode;
-        if ui.mini_mode {
-            let scale = f32::from(ui.mini.scale) / 100.0;
-            let count = mini_items(state).len().max(1) as f32;
-            let size = if ui.mini.vertical {
-                Vec2::new(240.0, 44.0 + 46.0 * count)
-            } else {
-                Vec2::new(40.0 + 150.0 * count, 96.0)
-            };
-            ctx.set_zoom_factor(scale);
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size * scale));
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
-                if ui.mini_always_on_top {
-                    egui::WindowLevel::AlwaysOnTop
-                } else {
-                    egui::WindowLevel::Normal
-                },
-            ));
-        } else {
-            ctx.set_zoom_factor(1.0);
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1280.0, 860.0)));
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
-                egui::WindowLevel::Normal,
-            ));
-        }
-    }
-
     fn icon_button(&self, ui: &mut egui::Ui, icon: Icon, hint: &str) -> bool {
         let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
         let color = if response.hovered() { TEXT } else { SECONDARY };
@@ -725,6 +612,7 @@ impl App {
     }
 
     fn top_bar(&mut self, root: &mut egui::Ui) {
+        let state = self.state();
         egui::Panel::top("title")
             .exact_size(42.0)
             .frame(
@@ -741,23 +629,41 @@ impl App {
                     FontId::proportional(22.0),
                     TEXT,
                 );
-                ui.painter().text(
-                    rect.center(),
-                    Align2::CENTER_CENTER,
-                    format!("{}  {}", t("Perfil ativo:"), t("Padrão")),
-                    FontId::proportional(13.0),
-                    TEXT,
+                ui.scope_builder(
+                    egui::UiBuilder::new().max_rect(Rect::from_center_size(
+                        rect.center(),
+                        Vec2::new(330.0, 36.0),
+                    )),
+                    |ui| {
+                        ui.horizontal_centered(|ui| {
+                            ui.label(t("Perfil ativo:"));
+                            let active = state
+                                .config
+                                .profiles
+                                .active
+                                .as_deref()
+                                .unwrap_or("Personalizado");
+                            dropdown(ui, "active-profile", active, 190.0, |ui| {
+                                for name in state.config.profiles.sync.keys() {
+                                    if ui.selectable_label(active == name, name).clicked() {
+                                        self.dispatch(Request::ActivateProfile {
+                                            name: name.clone(),
+                                        });
+                                    }
+                                }
+                                ui.separator();
+                                if ui.button(t("Adicionar / editar perfis")).clicked() {
+                                    self.page = Page::Settings;
+                                    self.section = Section::Profiles;
+                                    ui.close();
+                                }
+                            });
+                        });
+                    },
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if self.icon_button(ui, Icon::Refresh, &t("Atualizar dispositivos")) {
                         self.dispatch(Request::Refresh);
-                    }
-                    if self.icon_button(ui, Icon::Mini, &t("Modo Mini")) {
-                        self.settings(|r| {
-                            if let Request::UpdateSettings { mini_mode, .. } = r {
-                                *mini_mode = Some(true);
-                            }
-                        });
                     }
                 });
             });
@@ -877,7 +783,7 @@ impl App {
 
     // ---------- PC Monitoring ----------
 
-    fn monitoring(&self, ui: &mut egui::Ui, state: &Snapshot) {
+    fn monitoring(&mut self, ui: &mut egui::Ui, state: &Snapshot) {
         let unit = state.config.ui.temperature_unit;
         let sensors = &state.sensors;
         let pump_rpm = state
@@ -1004,20 +910,24 @@ impl App {
                     title(ui, &t("Rede"));
                     ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
                         ui.add_space(8.0);
-                        ui.label(
-                            RichText::new(format!(
-                                "{} ↑",
-                                rate(sensors.network.transmit_bytes_per_second)
-                            ))
-                            .size(26.0),
-                        );
-                        ui.label(
-                            RichText::new(format!(
-                                "{} ↓",
-                                rate(sensors.network.receive_bytes_per_second)
-                            ))
-                            .size(26.0),
-                        );
+                        for (value, icon) in [
+                            (sensors.network.transmit_bytes_per_second, Icon::ArrowUp),
+                            (sensors.network.receive_bytes_per_second, Icon::ArrowDown),
+                        ] {
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        let (rect, _) = ui.allocate_exact_size(
+                                            Vec2::new(18.0, 28.0),
+                                            Sense::hover(),
+                                        );
+                                        draw_icon(ui.painter(), rect, icon, MEDIUM);
+                                        ui.label(RichText::new(rate(value)).size(26.0));
+                                    },
+                                );
+                            });
+                        }
                         ui.add_space(14.0);
                     });
                 });
@@ -1057,211 +967,339 @@ impl App {
             });
         });
         ui.add_space(8.0);
+        let mut processes: Vec<_> = sensors.processes.iter().collect();
+        processes.sort_by(|a, b| {
+            let order = match self.process_sort {
+                0 => a.name.cmp(&b.name),
+                1 => a.cpu_percent.total_cmp(&b.cpu_percent),
+                2 => a
+                    .gpu_percent
+                    .partial_cmp(&b.gpu_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                3 => a.ram_bytes.cmp(&b.ram_bytes),
+                4 => a
+                    .download_bytes_per_second
+                    .partial_cmp(&b.download_bytes_per_second)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+                _ => a
+                    .upload_bytes_per_second
+                    .partial_cmp(&b.upload_bytes_per_second)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            };
+            if self.process_descending {
+                order.reverse()
+            } else {
+                order
+            }
+        });
+        let widths =
+            [0.43, 0.10, 0.10, 0.12, 0.125, 0.125].map(|fraction| fraction * ui.available_width());
         egui::Frame::new()
             .stroke(Stroke::new(1.0, BORDER))
             .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                egui::Grid::new("processes")
-                    .num_columns(3)
-                    .min_col_width(120.0)
-                    .spacing([0.0, 0.0])
-                    .striped(false)
-                    .show(ui, |ui| {
-                        let cell = |ui: &mut egui::Ui, text: &str, right: bool| {
-                            let layout = if right {
-                                egui::Layout::right_to_left(egui::Align::Center)
-                            } else {
-                                egui::Layout::left_to_right(egui::Align::Center)
-                            };
-                            ui.allocate_ui_with_layout(
-                                Vec2::new(if right { 140.0 } else { 560.0 }, 30.0),
-                                layout,
-                                |ui| {
-                                    ui.add_space(10.0);
-                                    ui.label(RichText::new(text).size(14.0));
-                                },
-                            );
-                        };
-                        cell(ui, &t("Principais processos"), false);
-                        cell(ui, "CPU ⌄", true);
-                        cell(ui, "RAM", true);
-                        ui.end_row();
-                        for process in &sensors.processes {
-                            cell(ui, &process.name, false);
-                            cell(ui, &format!("{:.0}%", process.cpu_percent), true);
-                            cell(ui, &format!("{}MB", process.ram_bytes / 1_000_000), true);
-                            ui.end_row();
-                        }
-                    });
-            });
-    }
-
-    // ---------- Especificações do sistema ----------
-
-    fn specs(&mut self, ui: &mut egui::Ui, state: &Snapshot) {
-        let specs = &state.specs;
-        ui.horizontal(|ui| {
-            page_title(ui, &t("Especificações do sistema"));
-        });
-        ui.add_space(12.0);
-        let width = ui.available_width();
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(width - 400.0);
-                ui.label(
-                    RichText::new(t("Lista de dispositivos"))
-                        .size(16.0)
-                        .strong(),
-                );
-                ui.add_space(8.0);
-                let section = |ui: &mut egui::Ui, name: &str, items: &[String]| {
-                    ui.label(RichText::new(name).size(16.0).strong());
-                    for item in items {
-                        ui.horizontal(|ui| {
-                            ui.add_space(14.0);
-                            ui.label(RichText::new(item).size(15.0).color(SECONDARY));
-                        });
-                    }
-                    ui.add_space(10.0);
-                };
-                ui.label(RichText::new("CPU").size(16.0).strong());
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                let headings = [
+                    t("Principais processos"),
+                    "CPU".into(),
+                    "GPU".into(),
+                    "RAM".into(),
+                    t("Baixar"),
+                    t("Fazer upload"),
+                ];
+                let mut chosen = None;
                 ui.horizontal(|ui| {
-                    ui.add_space(14.0);
-                    let color = if self.spec_detail == SpecDetail::Cpu {
-                        ORCHID
-                    } else {
-                        SECONDARY
-                    };
-                    if ui
-                        .add(
-                            egui::Label::new(
-                                RichText::new(&specs.cpu.name).size(15.0).color(color),
-                            )
-                            .sense(Sense::click()),
-                        )
-                        .clicked()
-                    {
-                        self.spec_detail = SpecDetail::Cpu;
+                    for (index, heading) in headings.iter().enumerate() {
+                        let (rect, response) =
+                            ui.allocate_exact_size(Vec2::new(widths[index], 34.0), Sense::click());
+                        response
+                            .clone()
+                            .on_hover_cursor(egui::CursorIcon::PointingHand);
+                        let right = index != 0;
+                        let sorted = self.process_sort == index;
+                        let x = if right {
+                            rect.right() - 10.0 - if sorted { 16.0 } else { 0.0 }
+                        } else {
+                            rect.left() + 10.0
+                        };
+                        ui.painter().text(
+                            Pos2::new(x, rect.center().y),
+                            if right {
+                                Align2::RIGHT_CENTER
+                            } else {
+                                Align2::LEFT_CENTER
+                            },
+                            heading,
+                            FontId::proportional(13.0),
+                            TEXT,
+                        );
+                        if sorted {
+                            draw_icon(
+                                ui.painter(),
+                                Rect::from_center_size(
+                                    Pos2::new(rect.right() - 12.0, rect.center().y),
+                                    Vec2::splat(12.0),
+                                ),
+                                if self.process_descending {
+                                    Icon::ChevronDown
+                                } else {
+                                    Icon::ChevronUp
+                                },
+                                TEXT,
+                            );
+                        }
+                        ui.painter().line_segment(
+                            [rect.right_top(), rect.right_bottom()],
+                            Stroke::new(1.0, BORDER),
+                        );
+                        if response.clicked() {
+                            chosen = Some(index);
+                        }
                     }
                 });
-                ui.add_space(10.0);
-                ui.label(RichText::new("GPU").size(16.0).strong());
-                for gpu in &state.sensors.gpus {
+                if let Some(index) = chosen {
+                    self.process_descending = if self.process_sort == index {
+                        !self.process_descending
+                    } else {
+                        index != 0
+                    };
+                    self.process_sort = index;
+                }
+                for process in processes.iter().take(5) {
+                    let values = [
+                        process.name.clone(),
+                        format!("{:.0}%", process.cpu_percent),
+                        process
+                            .gpu_percent
+                            .map_or("—".into(), |v| format!("{v:.0}%")),
+                        format!("{}MB", process.ram_bytes / 1_000_000),
+                        rate(process.download_bytes_per_second),
+                        rate(process.upload_bytes_per_second),
+                    ];
                     ui.horizontal(|ui| {
-                        ui.add_space(14.0);
-                        let color = if self.spec_detail == SpecDetail::Gpu {
-                            ORCHID
-                        } else {
-                            SECONDARY
-                        };
-                        if ui
-                            .add(
-                                egui::Label::new(RichText::new(&gpu.name).size(15.0).color(color))
-                                    .sense(Sense::click()),
-                            )
-                            .clicked()
-                        {
-                            self.spec_detail = SpecDetail::Gpu;
+                        for (index, value) in values.iter().enumerate() {
+                            let (rect, _) = ui.allocate_exact_size(
+                                Vec2::new(widths[index], 30.0),
+                                Sense::hover(),
+                            );
+                            let right = index != 0;
+                            let x = if right {
+                                rect.right() - 10.0
+                            } else {
+                                rect.left() + 10.0
+                            };
+                            let text = ui.painter().layout(
+                                value.clone(),
+                                FontId::proportional(13.0),
+                                SECONDARY,
+                                rect.width() - 18.0,
+                            );
+                            let pos = Pos2::new(
+                                if right { x - text.size().x } else { x },
+                                rect.center().y - text.size().y / 2.0,
+                            );
+                            ui.painter()
+                                .with_clip_rect(rect)
+                                .galley(pos, text, SECONDARY);
+                            ui.painter().line_segment(
+                                [rect.right_top(), rect.right_bottom()],
+                                Stroke::new(1.0, BORDER),
+                            );
                         }
                     });
                 }
-                ui.add_space(10.0);
-                section(
-                    ui,
-                    &t("Placa-mãe"),
-                    &specs.motherboard.iter().cloned().collect::<Vec<_>>(),
-                );
-                section(
-                    ui,
-                    "RAM",
-                    &specs
-                        .memory_total_bytes
-                        .map(|b| format!("{:.0} GB", b as f64 / 1024f64.powi(3)))
-                        .into_iter()
-                        .collect::<Vec<_>>(),
-                );
-                section(ui, &t("Armazenamento"), &specs.storage);
-                section(ui, &t("Áudio"), &specs.audio);
-                section(ui, &t("Rede"), &specs.network);
             });
+    }
+    // ---------- Especificações do sistema ----------
+
+    fn specs(&mut self, ui: &mut egui::Ui, state: &Snapshot) {
+        page_title(ui, &t("Especificações do sistema"));
+        ui.add_space(12.0);
+        let specs = &state.specs;
+        let mut groups = vec![
+            ("CPU", vec![("cpu".to_owned(), specs.cpu.name.clone())]),
+            (
+                "GPU",
+                state
+                    .sensors
+                    .gpus
+                    .iter()
+                    .enumerate()
+                    .map(|(i, g)| (format!("gpu:{i}"), g.name.clone()))
+                    .collect(),
+            ),
+            (
+                "Placa-mãe",
+                specs
+                    .motherboard
+                    .iter()
+                    .map(|name| ("board".to_owned(), name.clone()))
+                    .collect(),
+            ),
+        ];
+        for (label, prefix, items) in [
+            ("RAM", "ram", &specs.memory_modules),
+            ("Armazenamento", "storage", &specs.storage),
+            ("Áudio", "audio", &specs.audio),
+            ("Rede", "network", &specs.network),
+        ] {
+            groups.push((
+                label,
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, name)| (format!("{prefix}:{i}"), name.clone()))
+                    .collect(),
+            ));
+        }
+        let width = ui.available_width();
+        let detail_width = (width * 0.40).clamp(240.0, 388.0);
+        let list_width = (width - detail_width - 20.0).max(120.0);
+        let mut fields = specs
+            .details
+            .get(&self.spec_detail)
+            .cloned()
+            .unwrap_or_default();
+        let mut heading = "CPU";
+        for (group, items) in &groups {
+            if let Some((_, name)) = items.iter().find(|(key, _)| key == &self.spec_detail) {
+                heading = group;
+                if fields.is_empty() {
+                    fields.push(("Nome".into(), name.clone()));
+                }
+            }
+        }
+        if self.spec_detail == "cpu" {
+            if fields.is_empty() {
+                fields = vec![
+                    ("Fabricante".into(), specs.cpu.vendor.clone()),
+                    ("Nome do código".into(), "—".into()),
+                    (
+                        "Velocidade padrão do clock".into(),
+                        specs
+                            .cpu
+                            .base_mhz
+                            .map_or("—".into(), |v| format!("{v:.0} MHz")),
+                    ),
+                    ("Tipo de soquete".into(), "—".into()),
+                    ("TDP".into(), "—".into()),
+                ];
+            }
+            fields.insert(
+                3.min(fields.len()),
+                (
+                    "Velocidade atual do clock".into(),
+                    state
+                        .sensors
+                        .cpu
+                        .clock_mhz
+                        .map_or("—".into(), |v| format!("{v:.0} MHz")),
+                ),
+            );
+            fields.insert(
+                fields.len().saturating_sub(1),
+                ("Energia".into(), "—".into()),
+            );
+        } else if let Some(index) = self
+            .spec_detail
+            .strip_prefix("gpu:")
+            .and_then(|n| n.parse::<usize>().ok())
+            && let Some(gpu) = state.sensors.gpus.get(index)
+        {
+            fields = vec![
+                ("Modelo".into(), gpu.name.clone()),
+                (
+                    "Velocidade atual do clock".into(),
+                    gpu.clock_mhz.map_or("—".into(), |v| format!("{v:.0} MHz")),
+                ),
+                ("Energia".into(), "—".into()),
+            ];
+        }
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                Vec2::new(list_width, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(list_width);
+                    ui.set_max_width(list_width);
+                    ui.spacing_mut().interact_size.y = 18.0;
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    ui.label(
+                        RichText::new(t("Lista de dispositivos"))
+                            .size(16.0)
+                            .strong(),
+                    );
+                    ui.add_space(14.0);
+                    for (group, items) in &groups {
+                        ui.label(RichText::new(t(group)).size(16.0).strong());
+                        for (key, name) in items {
+                            ui.horizontal(|ui| {
+                                ui.add_space(14.0);
+                                let color = if &self.spec_detail == key {
+                                    ORCHID
+                                } else {
+                                    SECONDARY
+                                };
+                                if ui
+                                    .add(
+                                        egui::Label::new(
+                                            RichText::new(name).size(15.0).color(color),
+                                        )
+                                        .wrap()
+                                        .sense(Sense::click()),
+                                    )
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .clicked()
+                                {
+                                    self.spec_detail = key.clone();
+                                }
+                            });
+                        }
+                        if items.is_empty() {
+                            ui.label(RichText::new("—").color(SECONDARY));
+                        }
+                        ui.add_space(14.0);
+                    }
+                },
+            );
             egui::Frame::new()
                 .fill(DARKEST)
                 .inner_margin(16)
                 .show(ui, |ui| {
-                    ui.set_width(356.0);
-                    ui.set_min_height(560.0);
-                    let item = |ui: &mut egui::Ui, name: &str, value: String| {
-                        ui.label(RichText::new(name).size(15.0).strong());
-                        ui.label(RichText::new(value).size(15.0).color(SECONDARY));
-                        ui.add_space(8.0);
-                    };
-                    match self.spec_detail {
-                        SpecDetail::Cpu => {
-                            ui.label(RichText::new(t("CPU Detalhes:")).size(20.0).color(ORCHID));
-                            ui.add_space(8.0);
-                            item(ui, &t("Fabricante"), specs.cpu.vendor.clone());
-                            item(
-                                ui,
-                                &t("Núcleos / threads"),
-                                format!("{} / {}", specs.cpu.cores, specs.cpu.threads),
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        ui.set_width((detail_width - 32.0).max(100.0));
+                        ui.set_max_width((detail_width - 32.0).max(100.0));
+                        ui.set_min_height(650.0);
+                        ui.label(
+                            RichText::new(trf(
+                                "{dispositivo} Detalhes:",
+                                &[("dispositivo", &t(heading))],
+                            ))
+                            .size(20.0)
+                            .color(ORCHID),
+                        );
+                        ui.add_space(14.0);
+                        for (label, value) in &fields {
+                            ui.label(RichText::new(t(label)).size(15.0).strong());
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(if value.is_empty() { "—" } else { value })
+                                        .size(15.0)
+                                        .color(SECONDARY),
+                                )
+                                .wrap(),
                             );
-                            item(
-                                ui,
-                                &t("Velocidade padrão do clock"),
-                                specs
-                                    .cpu
-                                    .base_mhz
-                                    .map_or("—".into(), |v| format!("{v:.0} MHz")),
-                            );
-                            item(
-                                ui,
-                                &t("Velocidade máxima do clock"),
-                                specs
-                                    .cpu
-                                    .max_mhz
-                                    .map_or("—".into(), |v| format!("{v:.0} MHz")),
-                            );
-                            item(
-                                ui,
-                                &t("Velocidade atual do clock"),
-                                state
-                                    .sensors
-                                    .cpu
-                                    .clock_mhz
-                                    .map_or("—".into(), |v| format!("{v:.0} MHz")),
-                            );
+                            ui.add_space(12.0);
                         }
-                        SpecDetail::Gpu => {
-                            ui.label(RichText::new(t("GPU Detalhes:")).size(20.0).color(ORCHID));
-                            ui.add_space(8.0);
-                            if let Some(gpu) =
-                                state.sensors.gpus.get(state.config.governor.gpu_index)
-                            {
-                                let unit = state.config.ui.temperature_unit;
-                                item(ui, &t("Nome"), gpu.name.clone());
-                                item(ui, &t("Temperatura"), unit.format(gpu.temperature));
-                                item(
-                                    ui,
-                                    &t("Clock"),
-                                    gpu.clock_mhz.map_or("—".into(), |v| format!("{v:.0} MHz")),
-                                );
-                                item(
-                                    ui,
-                                    &t("Carga"),
-                                    gpu.load_percent.map_or("—".into(), |v| format!("{v:.0}%")),
-                                );
-                            }
-                        }
-                    }
+                    });
                 });
         });
     }
-
     // ---------- Iluminação ----------
 
     fn lighting_page(&mut self, ui: &mut egui::Ui, state: &Snapshot) {
         ui.horizontal(|ui| {
             page_title(ui, &t("Iluminação"));
+            self.device_profile_selector(ui, state, true);
         });
         ui.add_space(10.0);
         if state.devices.iter().all(|d| d.lighting.is_empty()) {
@@ -1307,7 +1345,7 @@ impl App {
         draft: &mut ChannelLighting,
         applied: &ChannelLighting,
     ) {
-        let expanded = self.expanded.as_deref() == Some(key);
+        let expanded = self.expanded_lighting.contains(key);
         let response = ui
             .horizontal(|ui| {
                 ui.set_min_height(70.0);
@@ -1356,30 +1394,35 @@ impl App {
                         if !capability.direction {
                             draft.backwards = false;
                         }
-                        if mode != Mode::Fixed {
+                        if !capability.per_led {
                             draft.per_led = false;
                         }
                     }
                     ui.add_space(8.0);
-                    let sun = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover()).0;
-                    draw_icon(ui.painter(), sun, Icon::Sun, SECONDARY);
-                    ui.add_sized(
-                        [90.0, 18.0],
-                        egui::Slider::new(&mut draft.brightness, 0..=100).show_value(false),
-                    )
-                    .on_hover_text(format!("{}%", draft.brightness));
-                    let dot = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover()).0;
-                    ui.painter()
-                        .circle_stroke(dot.center(), 5.0, Stroke::new(1.0, SECONDARY));
+                    ui.scope(|ui| {
+                        ui.spacing_mut().slider_width = 90.0;
+                        ui.spacing_mut().interact_size.y = 20.0;
+                        let sun = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover()).0;
+                        draw_icon(ui.painter(), sun.shrink(2.0), Icon::Sun, SECONDARY);
+                        ui.add(egui::Slider::new(&mut draft.brightness, 0..=100).show_value(false))
+                            .on_hover_text(format!("{}%", draft.brightness));
+                        let dot = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover()).0;
+                        ui.painter()
+                            .circle_stroke(dot.center(), 5.0, Stroke::new(1.0, SECONDARY));
+                    });
                 });
             })
             .response
             .interact(Sense::click());
         if response.clicked() {
-            self.expanded = if expanded { None } else { Some(key.to_owned()) };
+            if expanded {
+                self.expanded_lighting.remove(key);
+            } else {
+                self.expanded_lighting.insert(key.to_owned());
+            }
         }
-        if expanded {
-            self.lighting_detail(ui, channel, draft);
+        if self.expanded_lighting.contains(key) {
+            ui.push_id(key, |ui| self.lighting_detail(ui, channel, draft));
         }
         // Como no CAM, cada mudança é aplicada; aqui, ao soltar o mouse.
         let released = ui.input(|i| !i.pointer.any_down());
@@ -1414,14 +1457,24 @@ impl App {
             .inner_margin(16)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let per_led_available = draft.mode == Mode::Fixed && channel.leds > 1;
+                let per_led_available = channel.leds > 1;
                 ui.horizontal_wrapped(|ui| {
-                    if !draft.per_led {
+                    if draft.per_led {
+                        ui.label(
+                            RichText::new(t("Seleciona qualquer LED abaixo")).color(SECONDARY),
+                        );
+                    } else {
                         let mut remove = None;
                         for (index, color) in draft.colors.iter_mut().enumerate() {
-                            if color_chip(ui, color).secondary_clicked()
-                                && index >= capability.min_colors
-                            {
+                            let response = if capability.max_colors > 1 {
+                                let mut rgb = [color.0, color.1, color.2];
+                                let response = ui.color_edit_button_srgb(&mut rgb);
+                                *color = Rgb(rgb[0], rgb[1], rgb[2]);
+                                response
+                            } else {
+                                color_chip(ui, color)
+                            };
+                            if response.secondary_clicked() && index >= capability.min_colors {
                                 remove = Some(index);
                             }
                         }
@@ -1439,12 +1492,23 @@ impl App {
                     }
                     if per_led_available {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let changed = toggle_switch(ui, &mut draft.per_led);
+                            let changed = ui
+                                .add_enabled_ui(capability.per_led, |ui| {
+                                    toggle_switch(ui, &mut draft.per_led)
+                                })
+                                .inner;
                             ui.label(
                                 RichText::new(t("Personalizar cores LED"))
                                     .size(15.0)
                                     .color(SECONDARY),
                             );
+                            if !capability.per_led {
+                                ui.label(
+                                    RichText::new(t("Este modo não aceita cores por LED"))
+                                        .size(11.0)
+                                        .color(SECONDARY),
+                                );
+                            }
                             if changed && draft.per_led && draft.led_colors.len() < channel.leds {
                                 let base = draft.colors.first().copied().unwrap_or_default();
                                 draft.led_colors.resize(channel.leds, base);
@@ -1452,20 +1516,35 @@ impl App {
                         });
                     }
                 });
-                if draft.per_led {
-                    ui.horizontal_wrapped(|ui| {
-                        for color in draft.led_colors.iter_mut().take(channel.leds) {
-                            color_chip(ui, color);
-                        }
-                    });
-                }
                 lighting_preview(ui, channel, draft);
                 if capability.speed {
+                    let margin = ((ui.available_width() - 120.0) / 2.0).max(0.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(t("Velocidade")).color(SECONDARY));
-                        for speed in Speed::ALL {
-                            ui.selectable_value(&mut draft.speed, speed, t(speed.label()));
-                        }
+                        ui.add_space(margin);
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(120.0, 36.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.set_max_width(120.0);
+                                ui.spacing_mut().slider_width = 120.0;
+                                let mut index = draft.speed.index();
+                                ui.add(
+                                    egui::Slider::new(&mut index, 0..=4)
+                                        .show_value(false)
+                                        .step_by(1.0),
+                                );
+                                draft.speed = Speed::ALL[usize::from(index)];
+                            },
+                        );
+                    });
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            RichText::new(trf(
+                                "Velocidade {velocidade}",
+                                &[("velocidade", &t(draft.speed.label()))],
+                            ))
+                            .color(SECONDARY),
+                        );
                     });
                 }
                 if capability.direction {
@@ -1492,6 +1571,7 @@ impl App {
             .next();
         ui.horizontal(|ui| {
             page_title(ui, &t("Resfriando"));
+            self.device_profile_selector(ui, state, false);
         });
         ui.add_space(10.0);
         let third = (ui.available_width() - 32.0) / 3.0;
@@ -2005,104 +2085,6 @@ impl App {
                     }
                 });
             }
-            Section::Mini => {
-                card(ui, |ui| {
-                    title(ui, &t("Exibição"));
-                    let mut scale = ui_config.mini.scale;
-                    let slider = ui.add(
-                        egui::Slider::new(&mut scale, 50..=150)
-                            .suffix("%")
-                            .text(t("Tamanho")),
-                    );
-                    if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
-                        self.update_ui(state, |c| c.mini.scale = scale);
-                    }
-                });
-                ui.add_space(8.0);
-                card(ui, |ui| {
-                    title(ui, &t("Orientação"));
-                    ui.horizontal(|ui| {
-                        for (vertical, label) in [(true, "Vertical"), (false, "Horizontal")] {
-                            if ui
-                                .radio(ui_config.mini.vertical == vertical, t(label))
-                                .clicked()
-                            {
-                                self.update_ui(state, |c| c.mini.vertical = vertical);
-                            }
-                        }
-                    });
-                });
-                ui.add_space(8.0);
-                card(ui, |ui| {
-                    title(ui, &t("Personalização"));
-                    let mut on_top = ui_config.mini_always_on_top;
-                    if ui
-                        .checkbox(&mut on_top, RichText::new(t("Sempre no topo")).size(15.0))
-                        .changed()
-                    {
-                        self.update_ui(state, |c| c.mini_always_on_top = on_top);
-                    }
-                });
-                ui.add_space(8.0);
-                card(ui, |ui| {
-                    title(ui, &t("Painéis"));
-                    let mut readings = ui_config.mini.readings.clone();
-                    let mut changed = false;
-                    egui::Grid::new("mini-readings")
-                        .num_columns(3)
-                        .spacing([40.0, 10.0])
-                        .show(ui, |ui| {
-                            let rows: [[(&mut bool, &str); 3]; 3] = [
-                                [
-                                    (&mut readings.cpu_temperature, "Temperatura da CPU"),
-                                    (&mut readings.gpu_temperature, "Temperatura da GPU"),
-                                    (&mut readings.ram_load, "Carga da RAM"),
-                                ],
-                                [
-                                    (&mut readings.cpu_load, "Carga da CPU"),
-                                    (&mut readings.gpu_load, "Carga da GPU"),
-                                    (&mut readings.network, "Rede"),
-                                ],
-                                [
-                                    (&mut readings.cpu_clock, "Clock da CPU"),
-                                    (&mut readings.gpu_clock, "Clock da GPU"),
-                                    (&mut readings.liquid_temperature, "Temperatura do líquido"),
-                                ],
-                            ];
-                            for row in rows {
-                                for (value, label) in row {
-                                    changed |= ui
-                                        .checkbox(value, RichText::new(t(label)).size(15.0))
-                                        .changed();
-                                }
-                                ui.end_row();
-                            }
-                            changed |= ui
-                                .checkbox(
-                                    &mut readings.cpu_fan,
-                                    RichText::new(t("Ventilador da CPU")).size(15.0),
-                                )
-                                .changed();
-                            changed |= ui
-                                .checkbox(
-                                    &mut readings.gpu_fan,
-                                    RichText::new(t("Ventilador da GPU")).size(15.0),
-                                )
-                                .changed();
-                            ui.end_row();
-                        });
-                    if changed {
-                        self.update_ui(state, |c| c.mini.readings = readings);
-                    }
-                    ui.add_space(6.0);
-                    if ui
-                        .add(egui::Button::new(t("Abrir Mini Mode")).fill(PURPLE))
-                        .clicked()
-                    {
-                        self.update_ui(state, |c| c.mini_mode = true);
-                    }
-                });
-            }
             Section::Firmware => {
                 page_title(ui, "NZXT Firmware");
                 ui.add_space(8.0);
@@ -2142,9 +2124,74 @@ impl App {
                 title(ui, &t("Acesso aos dispositivos"));
                 self.permissions_section(ui, state);
             }),
+            Section::Profiles => self.profiles_page(ui, state),
             Section::About => card(ui, |ui| {
                 title(ui, &t("Sobre"));
                 label_value(ui, &t("Versão"), env!("CARGO_PKG_VERSION"));
+                ui.add_space(14.0);
+                title(ui, &t("Atualizações do aplicativo"));
+                use crate::updater::Phase;
+                let (label, request) = match state.updates.phase {
+                    Phase::Available if state.updates.installed => {
+                        ("Atualizar agora", Request::InstallUpdate)
+                    }
+                    Phase::RestartRequired => ("Reiniciar", Request::RestartAfterUpdate),
+                    _ => ("Verificar atualizações", Request::CheckUpdates),
+                };
+                if ui
+                    .add_enabled(!state.updates.busy(), egui::Button::new(t(label)))
+                    .clicked()
+                {
+                    self.dispatch(request);
+                }
+                if state.updates.busy() {
+                    ui.spinner();
+                }
+                let revision = &state.updates.build.revision;
+                ui.label(
+                    RichText::new(format!(
+                        "{}{}",
+                        revision.get(..8).unwrap_or(revision),
+                        if state.updates.build.dirty {
+                            " (dev)"
+                        } else {
+                            ""
+                        }
+                    ))
+                    .size(12.0)
+                    .color(SECONDARY),
+                )
+                .on_hover_text(revision);
+                if !state.updates.message.is_empty() {
+                    ui.label(RichText::new(t(&state.updates.message)).color(
+                        if state.updates.phase == Phase::Failed {
+                            ORANGE
+                        } else {
+                            SECONDARY
+                        },
+                    ));
+                }
+                if state.updates.phase == Phase::Available && !state.updates.installed {
+                    ui.label(t("Use o instalador desktop para habilitar atualizações"));
+                }
+                if let Some(candidate) = &state.updates.candidate {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} · {}",
+                            candidate.branch,
+                            candidate.revision.get(..8).unwrap_or(&candidate.revision)
+                        ))
+                        .size(12.0)
+                        .color(SECONDARY),
+                    );
+                }
+                if let Some(log) = &state.updates.log {
+                    ui.monospace(log.display().to_string());
+                }
+                ui.hyperlink_to(
+                    t("Repositório do projeto"),
+                    "https://github.com/oiacrasec/ubuntu-nzxt-cam",
+                );
                 ui.label(RichText::new(t("Projeto independente, sem afiliação com a NZXT. Referência: NZXT CAM 4.76.8 para Windows.")).size(12.0).color(SECONDARY));
             }),
         }
@@ -2222,35 +2269,6 @@ impl App {
             ui.colored_label(ORANGE, t(error));
         }
     }
-
-    fn mini_view(&mut self, ui: &mut egui::Ui, state: &Snapshot) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("NZXT CAM").strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if self.icon_button(ui, Icon::Mini, &t("Sair do Mini Mode")) {
-                    self.update_ui(state, |c| c.mini_mode = false);
-                }
-            });
-        });
-        let items = mini_items(state);
-        let cell = |ui: &mut egui::Ui, label: &str, value: &str| {
-            ui.vertical(|ui| {
-                ui.label(RichText::new(label).size(11.0).color(SECONDARY));
-                ui.label(RichText::new(value).size(20.0).color(TEXT));
-            });
-        };
-        if state.config.ui.mini.vertical {
-            for (label, value) in &items {
-                cell(ui, label, value);
-            }
-        } else {
-            ui.horizontal(|ui| {
-                for (label, value) in &items {
-                    ui.allocate_ui(Vec2::new(140.0, 50.0), |ui| cell(ui, label, value));
-                }
-            });
-        }
-    }
 }
 
 /// Chip de cor como o do CAM: amostra + valor hexadecimal; clicar abre o seletor.
@@ -2295,9 +2313,9 @@ fn toggle_switch(ui: &mut egui::Ui, on: &mut bool) -> bool {
 }
 
 /// Prévia própria do canal com as cores atuais: anel de 8 LEDs, logo ou fita.
-fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &ChannelLighting) {
+fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &mut ChannelLighting) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 170.0), Sense::hover());
-    let painter = ui.painter();
+    let painter = ui.painter().clone();
     let color = |i: usize| -> Color32 {
         let rgb = if lighting.per_led {
             lighting.led_colors.get(i).copied()
@@ -2316,6 +2334,7 @@ fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &Cha
         )
     };
     let c = rect.center();
+    let mut led_targets = Vec::new();
     match channel.name.as_str() {
         "ring" => {
             for i in 0..8 {
@@ -2328,12 +2347,14 @@ fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &Cha
                         c + Vec2::new(a.cos(), a.sin()) * 52.0
                     })
                     .collect();
+                led_targets.push((i, Rect::from_points(&points).expand(6.0)));
                 painter.add(egui::Shape::line(points, Stroke::new(12.0, color(i))));
             }
         }
         "logo" => {
             painter.circle_stroke(c, 52.0, Stroke::new(10.0, Color32::from_gray(230)));
             painter.circle_filled(c, 26.0, color(0));
+            led_targets.push((0, Rect::from_center_size(c, Vec2::splat(52.0))));
         }
         _ => {
             let leds = channel.leds.min(40);
@@ -2341,7 +2362,43 @@ fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &Cha
             for i in 0..leds {
                 let x = c.x - width / 2.0 + width * (i as f32 + 0.5) / leds as f32;
                 painter.circle_filled(Pos2::new(x, c.y), 5.0, color(i));
+                led_targets.push((
+                    i,
+                    Rect::from_center_size(Pos2::new(x, c.y), Vec2::splat(12.0)),
+                ));
             }
+        }
+    }
+    if lighting.per_led {
+        for (index, target) in led_targets {
+            let Some(rgb) = lighting.led_colors.get_mut(index) else {
+                continue;
+            };
+            let label = trf("LED {numero}", &[("numero", &(index + 1).to_string())]);
+            let response = ui
+                .interact(target, ui.id().with(("led", index)), Sense::click())
+                .on_hover_text(&label);
+            if response.hovered() {
+                painter.rect_stroke(
+                    target,
+                    2,
+                    Stroke::new(1.0, ORCHID),
+                    egui::StrokeKind::Outside,
+                );
+            }
+            egui::Popup::from_toggle_button_response(&response)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.label(&label);
+                    let mut color = Color32::from_rgb(rgb.0, rgb.1, rgb.2);
+                    if egui::color_picker::color_picker_color32(
+                        ui,
+                        &mut color,
+                        egui::color_picker::Alpha::Opaque,
+                    ) {
+                        *rgb = Rgb(color.r(), color.g(), color.b());
+                    }
+                });
         }
     }
 }
@@ -2498,15 +2555,6 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
-        let mini_key = (
-            state.config.ui.mini_mode,
-            state.config.ui.mini.clone(),
-            state.config.ui.mini_always_on_top,
-        );
-        if self.mini_key.as_ref() != Some(&mini_key) {
-            self.mini_key = Some(mini_key);
-            self.set_mini(ctx, &state);
-        }
         #[cfg(all(feature = "tray", target_os = "linux"))]
         if let Some(tray) = &self.tray {
             let language = state.config.ui.language.clone();
@@ -2527,11 +2575,10 @@ impl eframe::App for App {
 
     fn ui(&mut self, root: &mut egui::Ui, _: &mut eframe::Frame) {
         let state = self.state();
-        if self.mini {
-            egui::CentralPanel::default()
-                .frame(egui::Frame::new().fill(DARKEST).inner_margin(10))
-                .show(root, |ui| self.mini_view(ui, &state));
-            return;
+        if self.last_profile != profile_ui::selection(&state) {
+            self.lighting.clear();
+            self.cooling.clear();
+            self.last_profile = profile_ui::selection(&state);
         }
         self.top_bar(root);
         self.sidebar(root, &state);
@@ -2570,5 +2617,6 @@ impl eframe::App for App {
                         });
                     });
             });
+        self.profile_dialog(root.ctx(), &state);
     }
 }

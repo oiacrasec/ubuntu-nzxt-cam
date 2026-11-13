@@ -5,9 +5,31 @@ onde o trabalho parou e como continuar sem refazer etapas.
 
 ## Ponto de retomada — 12/11/2026
 
-Último commit de código: `a447b11`. Árvore limpa. Nada foi executado no Ubuntu.
-Verificado no Windows: `cargo test` (61, e 37 com `--no-default-features`) e
+Último commit de código anterior à continuação: `a447b11`; handoff em `4c9ece0`.
+Na continuação entraram documentação, prévia Windows, interface, Profile Sync
+(pilha de ativações, vários programas por regra, dias da semana e horários que
+cruzam a meia-noite) e atualização pelo commit de produção; ver a tabela abaixo.
+Nada foi executado no Ubuntu.
+Verificado no Windows: `cargo test --no-default-features --features gui` (74),
+`cargo test --no-default-features` (73) e
 `cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings` nos dois builds.
+
+Também foi acrescentada, a pedido do usuário, uma [prévia visual no Windows](USO.md#conferir-o-layout-no-windows):
+`cargo build --no-default-features --features gui`, depois `preview-windows.cmd`.
+Usa a mesma GUI com dados simulados, estado só em memória e transporte que recusa
+E/S; não usa o controlador real. A janela foi aberta e capturada em
+`package/preview-windows.png`; a revisão mais recente usa `package/preview-final-*.png`.
+Os testes incluem isolamento da prévia, preflight do Profile Sync, recusa de saída
+térmica com falha, codificação por LED da Fita em Respirar e atualização via Git local.
+Isso não valida o funcionamento no Ubuntu.
+
+Na revisão lado a lado pedida pelo usuário, foram corrigidos ícones de rede e
+ordenação, seis colunas de processos, cliques/detalhes de todos os tipos de
+especificações e expansão independente dos canais de iluminação. Mini Mode foi
+retirado da interface. Profile Sync fica antes de Sobre; Sobre segue o updater
+da Facecam (`package/facecam-reference`, revisão `d32e400`). A consulta usa a branch
+padrão main/master, não releases. Instalação, rollback e reinício reais no Ubuntu
+ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 
 | Commit | Entrega |
 | --- | --- |
@@ -36,21 +58,24 @@ Verificado no Windows: `cargo test` (61, e 37 com `--no-default-features`) e
 
 ## Próximos passos, na ordem
 
-1. **Observar no CAM, com autorização do usuário para mudar a iluminação
-   temporariamente:** a edição com "Personalizar cores LED" ligado (o clique de
-   12/11 rolou a página e não ligou o interruptor; ele fica à direita da linha
-   "#51007A" do detalhe do Anel) e o detalhe do modo "Temperatura do CPU" do
-   Logótipo (escala de cores). Restaurar depois: Logótipo e Anel em Fixo `#51007A`,
-   Fita em Respirar.
-2. Ajustar o detalhe de iluminação ao observado. Já visto no CAM e ainda não
-   reproduzido: na Fita, velocidade é um slider único com rótulo ("Velocidade Normal")
-   abaixo da prévia, e "Add Color" é um botão ao lado do chip de cor.
-3. Modos por temperatura (CPU/GPU) e Active Profile/Profile Sync.
+1. **Concluído na continuação:** observar "Personalizar cores LED" ligado no
+   Anel e "Temperatura do CPU" no Logótipo, com autorização explícita do usuário.
+   Restauração confirmada na interface: Logótipo e Anel em Fixo `#51007A`,
+   personalização do Anel desligada e Fita em Respirar. Evidências e limites em
+   [Referência Windows](REFERENCIA_WINDOWS.md#detalhe-da-iluminação-observado-no-cam).
+2. **Implementado, sem validação no Ubuntu:** slider único de velocidade com
+   rótulo abaixo da prévia, amostras de cor e botão de adicionar ao lado, e clique
+   no segmento da prévia para editar um LED. Os seletores e desenhos são próprios.
+3. Modos por temperatura (CPU/GPU). Active Profile/Profile Sync já está implementado;
+   validar regras por programa/horário e restauração de Default no Ubuntu.
 4. Modos de áudio (Nivelado, Sincronização, Graves) com captura do PipeWire.
 5. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
    iluminação, abaixo do Smart Device (pedido do usuário). Memória via SMBus exige
    proteções contra escrita no SPD.
-6. No Ubuntu, pelo usuário: seguir [Validação local](VALIDACAO_LOCAL.md).
+6. No Ubuntu, pelo usuário: seguir [Validação local](VALIDACAO_LOCAL.md), incluindo
+   instalação registrada, consulta de produção, publicação/rollback e reinício
+   seguro a partir de Sobre. Campos indisponíveis nas especificações/processos
+   são exibidos como `—`, sem simular leituras reais.
 
 ## Regras que valem para a continuação
 

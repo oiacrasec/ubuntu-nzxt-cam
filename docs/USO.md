@@ -4,6 +4,28 @@ Compile, instale, prepare as permissões e abra o aplicativo pelo menu.
 Esta página descreve o comportamento implementado; o estado de validação de cada
 item está no [roadmap](ROADMAP.md).
 
+## Conferir o layout no Windows
+
+**Implementado:** o modo `--preview` abre a mesma interface egui com dados
+simulados de CPU, GPU, Kraken X e Smart Device V1. Serve para conferir layout,
+navegação, editores e Profile Sync; não valida funcionamento de hardware no Ubuntu.
+
+No PowerShell, na raiz do repositório, com Rust instalado:
+
+```powershell
+cargo build --no-default-features --features gui
+.\target\debug\nzxt-cam.exe --preview
+```
+
+Depois de compilar, também é possível abrir `preview-windows.cmd` com duplo clique.
+A janela tem o título **NZXT CAM — Prévia (dados simulados)**. Os números são
+exemplos fixos, não leituras do computador. Mudanças de iluminação, curvas e
+preferências ficam apenas na memória e são descartadas ao fechar. A prévia não
+inicia o controlador Linux, não abre dispositivos, não lê nem salva configurações
+reais, e recusa importação, exportação, início automático e operações de permissões.
+`--preview` não pode ser combinado com outras opções. Sem ele, o build Windows
+continua sem controle operacional do hardware.
+
 ## Compilar e instalar
 
 ```bash
@@ -40,19 +62,76 @@ A janela segue o layout do NZXT CAM: barra superior, menu lateral e cartões.
 - **PC Monitoring**: CPU e GPU (carga, temperatura, clock, ventilador), RAM, rede,
   armazenamento por disco montado e principais processos.
 - **Especificações do sistema**: CPU, GPU, placa-mãe, RAM, armazenamento, áudio e rede,
-  com detalhes da CPU ou da GPU ao lado.
+  com itens clicáveis e detalhes do item selecionado ao lado. Campos indisponíveis
+  aparecem como `—`. Sem acesso a dados de módulos individuais, a RAM mostra o total.
 - **Iluminação**: por canal, brilho e modo; clicar na linha abre cores, velocidade e direção.
+  Vários canais podem ficar abertos; cada linha fecha apenas seu próprio detalhe.
+  **Personalizar cores LED** aceita Fixo no Anel e Fixo/Respirar na Fita.
 - **Resfriando**: temperaturas de CPU, GPU e líquido; por canal, RPM, fonte
   (**Líquido**, **CPU**, **GPU**) e perfil **Silencioso**, **Desempenho**, **Fixo** ou
   **Personalizado**. Clicar na linha abre o editor de curva.
 - **Configurações**: **Geral** (idioma, °C/°F, temperatura da CPU, bandeja, início,
-  backup em `~/nzxt-cam-backup.json` e painéis visíveis), **Mini Mode** (tamanho,
-  orientação, sempre no topo e leituras), **NZXT Firmware**, **Acesso aos dispositivos**
-  e **Sobre**.
+  backup em `~/nzxt-cam-backup.json` e painéis visíveis), **NZXT Firmware**,
+  **Acesso aos dispositivos**, **Profile Sync** e **Sobre** (atualizações do aplicativo).
 
-O ícone de janelas no topo abre o **Mini Mode**. Com a bandeja disponível, fechar a janela mantém o governador
+O Mini Mode foi retirado da interface a pedido do usuário; campos antigos da
+configuração continuam legíveis. Com a bandeja disponível, fechar a janela mantém o governador
 ativo; **Sair** na bandeja encerra o aplicativo. No GNOME, a bandeja pode exigir a
 extensão AppIndicator.
+
+Na tabela de processos, os cabeçalhos ordenam as linhas e a seta indica a direção.
+GPU, download e upload por processo ficam em `—` quando não há fonte de leitura;
+o coletor Linux atual fornece CPU e RAM por processo e tráfego agregado de rede.
+
+## Profile Sync
+
+**Implementado, sem validação no Ubuntu.** Em **Configurações** › **Profile Sync**:
+
+1. Salve os ajustes atuais em perfis nomeados de iluminação e de refrigeração.
+2. Adicione um perfil mestre e selecione os dois perfis que ele combina.
+3. Use **Salvar e aplicar**; o seletor **Perfil ativo** da barra superior também
+   ativa perfis já salvos. Uma edição manual de canal passa a **Personalizado**.
+4. Opcionalmente, configure **Por programa** (nome exato do executável Linux,
+   sem caminho) ou **Por horário** (hora local, início incluído e fim excluído).
+   Horários podem cruzar a meia-noite; início e fim iguais são recusados.
+
+`Default` não aceita ativação automática nem remoção. As regras são verificadas
+a cada três segundos; entre regras simultâneas vence a primeira em ordem
+alfabética do nome. Ao terminar uma regra, `Default` é restaurado. Seleções
+manuais não são reaplicadas continuamente pela mesma regra: uma nova transição
+é necessária. Na prévia Windows, a ativação é manual e a avaliação automática
+não consulta os processos nem o relógio do computador.
+
+O controlador valida todos os canais antes de escrever; um canal indisponível
+recusa a ativação. Uma falha durante o envio pode deixar parte da iluminação
+aplicada e é informada; o perfil não é declarado ativo nesse caso. Os pisos,
+fontes e limites térmicos continuam valendo para a refrigeração de qualquer perfil.
+
+## Atualizar o aplicativo
+
+**Implementado, sem ensaio de instalação no Ubuntu.** A atualização segue o
+fluxo do Facecam Hub: consulta o commit da branch padrão `main` ou `master` do
+repositório do projeto, sem depender de releases numeradas.
+
+1. Instale pelo `install-desktop-app.sh` para registrar prefixo, build e checksum.
+   Para uma instalação anterior sem registro, execute novamente o instalador.
+2. Em **Configurações** › **Sobre**, clique em **Verificar atualizações**.
+3. Quando houver um candidato, clique em **Atualizar agora**. Git, Rust/Cargo e
+   as dependências de compilação do aplicativo precisam estar disponíveis.
+4. Ao concluir, clique em **Reiniciar**. A instalação não reinicia por conta própria.
+
+Download e compilação rodam em segundo plano; o controlador continua refrigerando.
+Antes de publicar, a atualização confere a revisão selecionada, sua continuidade
+em relação à instalação, a identidade do novo binário e os recursos GUI/bandeja/NVIDIA.
+A troca usa o instalador existente, preserva a configuração e verifica o checksum
+do resultado; falhas na publicação tentam restaurar o executável e o registro
+anteriores. Falhas e o caminho do log aparecem em **Sobre**. O reinício só prossegue
+se o controlador conseguir preparar o estado térmico de saída dos canais.
+
+Os arquivos de atualização ficam em `~/.cache/nzxt-cam/updates`, respeitando
+`XDG_CACHE_HOME`; o registro fica ao lado do binário instalado, em
+`nzxt-cam.installation.json`. `nzxt-cam --build-info` mostra a identidade do build.
+Na prévia Windows, os três botões apenas simulam estados, sem rede, instalação ou reinício.
 
 ## Segurança térmica
 

@@ -44,8 +44,9 @@ de aplicar perfil, salvar ou ler sensores.
 | `profiles.rs` | Perfis por dispositivo e Profile Sync (ativação por programa ou horário) | `resources.rs` |
 | `permissions.rs` | Plano revisável e helper restrito para a regra udev | `virtual_camera.rs` |
 | `engine.rs` | Comandos, transições, persistência e snapshot | igual |
-| `config.rs`, `i18n.rs`, `ipc.rs`, `tray.rs`, `desktop.rs`, `installation.rs`, `updater.rs`, `dependencies.rs` | Mesmos contratos do Facecam Hub | igual |
-| `gui.rs` | egui com layout do CAM: navegação lateral, Monitoramento, Refrigeração, Iluminação, Configurações, Modo Mini | igual |
+| `config.rs`, `i18n.rs`, `ipc.rs`, `tray.rs`, `desktop.rs` | Persistência, idioma, controle local, bandeja e integração desktop | igual |
+| `installation.rs`, `updater.rs` | Identidade do build, registro da instalação e atualização explícita pelo commit de produção, em worker separado | mesmo fluxo do Facecam Hub, adaptado ao instalador do CAM |
+| `gui.rs` | egui com layout do CAM: navegação lateral, Monitoramento, Refrigeração, Iluminação, Configurações e Profile Sync; Mini Mode removido | igual |
 
 ## Comandos e estado
 
@@ -58,6 +59,17 @@ o estado operacional.
 O socket Unix aceita uma mensagem JSON por linha, com limite por pedido, em
 diretório do usuário com modo 0700. Uma trava impede dois controladores. Isso
 também evita dois processos escrevendo no mesmo hidraw.
+
+Profile Sync salva perfis de iluminação e refrigeração separados e os combina em
+perfis mestres. Toda ativação passa por validação de todos os canais antes de E/S;
+falhas não são apresentadas como ativação bem-sucedida. Regras por executável ou
+horário local são avaliadas pelo controlador, inclusive no modo headless.
+
+Atualizações só começam por pedido explícito. O worker de Git/Cargo não bloqueia
+o governador, tem tempos limite e cancela apenas seu grupo de subprocessos ao
+encerrar. O estado **Reiniciar** exige uma nova ação; antes de trocar de processo,
+o controlador prepara o estado térmico de saída e recusa o reinício se isso falhar.
+Instalação e reinício reais ainda precisam ser validados no Ubuntu.
 
 ## Segurança térmica
 

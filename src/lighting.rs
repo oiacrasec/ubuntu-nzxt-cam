@@ -103,7 +103,7 @@ pub struct ChannelLighting {
     pub moving: bool,
     /// Brilho de 0 a 100%, aplicado às cores antes do envio.
     pub brightness: u8,
-    /// "Personalizar cores LED": uma cor por LED (somente no modo Fixo).
+    /// "Personalizar cores LED": uma cor por LED nos modos aceitos pelo canal.
     pub per_led: bool,
     pub led_colors: Vec<Rgb>,
 }
@@ -132,6 +132,8 @@ pub struct Capability {
     pub max_colors: usize,
     pub speed: bool,
     pub direction: bool,
+    #[serde(default)]
+    pub per_led: bool,
 }
 
 impl ChannelLighting {
@@ -148,8 +150,8 @@ impl ChannelLighting {
                 capability.max_colors
             );
         }
-        if self.per_led && self.mode != Mode::Fixed {
-            bail!("Cores por LED só existem no modo Fixo");
+        if self.per_led && !capability.per_led {
+            bail!("Este modo não aceita cores por LED");
         }
         if self.led_colors.len() > 40 {
             bail!("No máximo 40 cores por LED");
@@ -179,6 +181,7 @@ mod tests {
                 max_colors: 1,
                 speed: false,
                 direction: false,
+                per_led: true,
             },
             Capability {
                 mode: Mode::Breathing,
@@ -186,6 +189,7 @@ mod tests {
                 max_colors: 8,
                 speed: true,
                 direction: false,
+                per_led: false,
             },
             Capability {
                 mode: Mode::SpectrumWave,
@@ -193,6 +197,7 @@ mod tests {
                 max_colors: 0,
                 speed: true,
                 direction: true,
+                per_led: false,
             },
         ]
     }

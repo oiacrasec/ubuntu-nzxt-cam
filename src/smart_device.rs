@@ -31,6 +31,7 @@ fn cap(mode: Mode, min: usize, max: usize, speed: bool, direction: bool) -> Capa
         max_colors: max,
         speed,
         direction,
+        per_led: matches!(mode, Mode::Fixed | Mode::Breathing),
     }
 }
 
@@ -242,5 +243,36 @@ mod tests {
         for capability in &sd.lighting_channels()[0].capabilities {
             assert!(protocol::smart_mode(capability.mode).is_some());
         }
+    }
+
+    #[test]
+    fn breathing_accepts_individual_leds_in_one_animation_step() {
+        let mock = Mock::default();
+        let mut sd = device(&mock);
+        let lighting = ChannelLighting {
+            mode: Mode::Breathing,
+            per_led: true,
+            led_colors: (0..40)
+                .map(|index| crate::lighting::Rgb(index, 20, 30))
+                .collect(),
+            ..Default::default()
+        };
+        lighting
+            .validate(&sd.lighting_channels()[0].capabilities)
+            .unwrap();
+        sd.set_lighting("led", &lighting).unwrap();
+        let writes = mock.written();
+        assert_eq!(writes.len(), 2);
+        assert_eq!(&writes[0][..5], &[0x02, 0x4b, 0x07, 0, 2]);
+        assert_eq!(&writes[0][5..11], &[20, 0, 30, 20, 1, 30]);
+        assert_eq!(&writes[1][..4], &[0x03, 20, 19, 30]);
+        let mut unsupported = lighting;
+        unsupported.mode = Mode::Fading;
+        unsupported.colors.push(crate::lighting::Rgb::default());
+        assert!(
+            unsupported
+                .validate(&sd.lighting_channels()[0].capabilities)
+                .is_err()
+        );
     }
 }

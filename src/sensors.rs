@@ -57,6 +57,12 @@ pub struct Process {
     /// Fração de toda a CPU da máquina, como no CAM.
     pub cpu_percent: f64,
     pub ram_bytes: u64,
+    #[serde(default)]
+    pub gpu_percent: Option<f64>,
+    #[serde(default)]
+    pub download_bytes_per_second: Option<f64>,
+    #[serde(default)]
+    pub upload_bytes_per_second: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -446,6 +452,7 @@ impl Sensors {
                         cpu_percent: ticks.saturating_sub(*previous) as f64 * 100.0
                             / elapsed as f64,
                         ram_bytes: rss * PAGE_SIZE,
+                        ..Default::default()
                     });
                 }
             }

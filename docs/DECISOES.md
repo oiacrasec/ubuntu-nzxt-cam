@@ -88,7 +88,29 @@ código; logotipos, ilustrações e as fontes licenciadas pela NZXT (Akkurat, Go
 não são copiados nem extraídos da instalação. **Fora da interface, a pedido do
 usuário:** Áudio, Suporte e Beta. **Sem equivalente no hardware ou no porte:**
 Privacidade (o porte não coleta dados), Graphics API (tela LCD), Serial Devices.
-**Pendente:** Profile Sync, cores personalizadas e opacidade do Mini Mode.
+**Atualização após a revisão do usuário:** Profile Sync e edição por LED foram
+implementados, sem validação no Ubuntu. Mini Mode foi retirado da interface;
+seus campos antigos continuam legíveis para preservar configurações existentes.
+
+## Atualização em Sobre pelo commit de produção — 12/11/2026
+
+O usuário pediu o fluxo do [Facecam Hub](https://github.com/oiacrasec/ubuntu-elgato-facecam),
+consultado na revisão `d32e400` (`src/updater.rs`, `src/installation.rs`, `build.rs`
+e tela Sobre). A consulta inicial a releases numeradas foi substituída por
+`git ls-remote --symref … HEAD`, aceitando somente a branch padrão main/master.
+
+O worker fixa o commit selecionado, verifica ancestralidade, compila com os mesmos
+recursos, confere `--build-info` e só então chama o instalador local existente.
+O registro guarda prefixo, revisão, recursos e SHA-256. A publicação verifica o
+checksum e conserva backup do executável/registro para restaurar em caso de falha.
+Ao contrário do bundle de recursos da Facecam, este porte usa sua instalação atual
+de binário, ícone e atalho; não há bundle de fundos nem recursos proprietários.
+
+O controlador continua ativo durante download/compilação. Reiniciar é uma ação
+separada e depende de preparar a saída térmica dos canais sem erro. A nova instância
+espera a anterior sair antes de adquirir o controle. Na prévia Windows, todo esse
+fluxo é simulado sem rede nem alterações em arquivos. Instalação, rollback e reinício
+reais continuam pendentes de ensaio no Ubuntu.
 
 ## Como registrar uma nova decisão
 

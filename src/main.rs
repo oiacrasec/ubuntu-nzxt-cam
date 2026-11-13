@@ -5,20 +5,25 @@ mod devices;
 mod driver;
 mod engine;
 mod governor;
-#[cfg(all(feature = "gui", unix))]
+#[cfg(feature = "gui")]
 mod gui;
 mod i18n;
+mod installation;
 #[cfg(unix)]
 mod ipc;
 mod kraken_x;
 mod lighting;
 mod permissions;
+#[cfg(all(feature = "gui", not(unix)))]
+mod preview;
+mod profiles;
 mod protocol;
 mod sensors;
 mod smart_device;
 mod specs;
 #[cfg(all(feature = "tray", target_os = "linux"))]
 mod tray;
+mod updater;
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -31,6 +36,18 @@ use std::path::{Path, PathBuf};
     about = "NZXT CAM — native cooling, lighting and monitoring for Ubuntu 24.04+"
 )]
 struct Args {
+    #[arg(long, exclusive = true, help = "Print the build identity as JSON")]
+    build_info: bool,
+    #[arg(long, hide = true)]
+    register_installation: Option<PathBuf>,
+    #[arg(long, hide = true)]
+    restart_after: Option<u32>,
+    #[arg(
+        long,
+        exclusive = true,
+        help = "Preview the layout on Windows with simulated data and no hardware access"
+    )]
+    preview: bool,
     #[arg(long)]
     config: Option<PathBuf>,
     #[arg(long, help = "Run the controller in the foreground without a GUI")]
@@ -106,6 +123,25 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T> {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.build_info {
+        println!(
+            "{}",
+            serde_json::to_string(&installation::BuildInfo::default())?
+        );
+        return Ok(());
+    }
+    if let Some(prefix) = &args.register_installation {
+        return installation::register(prefix);
+    }
+    if let Some(pid) = args.restart_after {
+        updater::wait_for_parent(pid)?;
+    }
+    if args.preview {
+        #[cfg(all(feature = "gui", not(unix)))]
+        return gui::run(preview::Controller::spawn(), false);
+        #[cfg(not(all(feature = "gui", not(unix))))]
+        bail!("A prévia requer um build Windows com a interface habilitada");
+    }
     if let Some(action) = &args.permissions_helper {
         // Executado pelo pkexec, antes de qualquer GUI ou IPC.
         return permissions::helper(action);

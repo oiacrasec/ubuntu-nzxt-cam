@@ -49,6 +49,7 @@ Categories=System;Monitor;HardwareSettings;
 StartupWMClass=nzxt-cam
 EOF
 mv -f -- "$APP_DIR/.nzxt-cam.desktop.new" "$APP_DIR/nzxt-cam.desktop"
+"$BIN_DIR/nzxt-cam" --register-installation "$INSTALL_PREFIX"
 if "$AUTOSTART"; then "$BIN_DIR/nzxt-cam" --install-autostart; fi
 echo "Instalado: $BIN_DIR/nzxt-cam"
 echo 'Abra NZXT CAM no menu de aplicativos.'

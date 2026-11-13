@@ -69,6 +69,7 @@ fn cap(mode: Mode, min: usize, max: usize, speed: bool, direction: bool) -> Capa
         max_colors: max,
         speed,
         direction,
+        per_led: mode == Mode::Fixed,
     }
 }
 

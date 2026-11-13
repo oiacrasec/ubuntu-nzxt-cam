@@ -4,6 +4,8 @@ O NZXT CAM 4.76.8.70 instalado na máquina Windows do usuário é a referência 
 paridade. Esta página registra a identidade dos arquivos, a divisão entre interface
 e núcleo nativo, os dispositivos do usuário e os recursos observados.
 Análise estática de 12/11/2026; nenhum componente do CAM foi executado para ela.
+O diagnóstico de conflitos abaixo é uma observação separada do CAM já em execução,
+por consultas de leitura no Windows e nos registros locais.
 
 ## Artefatos
 
@@ -71,6 +73,128 @@ Presença de texto não comprova que o recurso se aplica ao hardware do usuário
 | Perfis | Profile Sync: perfis mestres que ativam vários perfis de dispositivo, com auto-launch por programa ou por horário |
 | Aplicação | Iniciar com o sistema, iniciar minimizado, Modo Mini (sempre no topo, encaixe na borda, painéis), °C/°F, bandeja |
 | Estados de dispositivo | Inicializando, pronto, falha de comunicação, conflito com outro programa, aguardando retomada |
+
+## Possíveis conflitos com outros softwares
+
+Outro programa de RGB ou monitoramento pode disputar o acesso ao dispositivo e
+impedir que o CAM aplique comandos. A presença de programas simultâneos, sozinha,
+não comprova conflito nem identifica o responsável.
+
+A [orientação oficial da NZXT](https://support.nzxt.com/hc/en-us/articles/48228772206107-My-NZXT-device-is-not-responding-to-CAM)
+descreve interrupções do acesso exclusivo por outros programas e recomenda
+identificar os processos que mantêm o dispositivo aberto.
+
+**Evidência da referência Windows, coletada em 12/11/2026.** Ambiente: NZXT CAM
+4.76.8, Windows build 26300, Kraken X (`1e71:170e`) e Smart Device V1
+(`1e71:1714`). Procedimento: consultar processos, serviços, configuração de
+iluminação do Windows, dispositivos presentes e arquivos de log, sem alterar
+configurações, encerrar processos ou enviar comandos aos dispositivos.
+
+| Observação | Resultado e limite da evidência |
+| --- | --- |
+| Programas ativos durante a consulta | CAM, Corsair iCUE 5.52.93 e componentes ASUS Aura/Armoury; serviço `LightingService` ativo e plugin ASUS instalado no iCUE. Nenhum deles foi confirmado como responsável pela falha. |
+| Iluminação Dinâmica do Windows | Habilitada (`AmbientLightingEnabled = 1`); não foi verificado se controla alguma das peças afetadas. |
+| Registro de 03/11/2026 | O `cam.log` registra `opened with shared access` para Kraken X e Smart Device, na sessão do CAM 4.76.6. É um indício de ausência de exclusividade, sem identificar outro processo. |
+| Registro de 07/11/2026 | Comandos de duty dos canais de fan e bomba do Kraken falharam com `Fwk1SetRpm`, causado por `CallbackTimeout`. O timeout confirma falha de comando, mas não prova conflito com outro software. |
+| Sessão consultada em 12/11/2026 | Ambos os dispositivos estavam com status `OK` no Windows e foram inicializados pelo CAM 4.76.8; não houve aviso de acesso compartilhado nessa inicialização. Isso não exclui falhas intermitentes. |
+
+Os registros consultados ficam em `%APPDATA%\NZXT CAM\logs\cam.log`.
+Não foi reproduzida a falha durante a investigação, não houve teste de isolamento
+dos programas e não foi identificado qual processo concorrente abriu o dispositivo.
+**Não verificado:** relação causal entre os programas listados e os sintomas do usuário.
+
+Para confirmar uma disputa de acesso no Windows, durante a falha:
+
+1. No **Gerenciador de Dispositivos**, abra as propriedades do dispositivo NZXT.
+   Se necessário, use **Exibir** › **Dispositivos por contêiner** e selecione a
+   interface HID correspondente.
+2. Em **Detalhes**, copie o **Nome do objeto de dispositivo físico** (PDO).
+   Obtenha o valor na sessão atual; ele pode mudar após reiniciar.
+3. No [Process Explorer da Microsoft](https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer),
+   use **Find** › **Find Handle or DLL** para pesquisar esse PDO.
+4. Registre os processos encontrados, o dispositivo, o horário e o sintoma.
+   Outro programa com um handle aberto é evidência de acesso concorrente;
+   atribuir a falha a ele ainda exige correlacionar o acesso com o sintoma.
+   Encontrar apenas componentes do CAM não descarta um conflito transitório anterior.
+
+Um teste de isolamento que envolva encerrar controladores de refrigeração exige
+verificar a segurança térmica antes; não integra os checks comuns nem foi feito
+nesta investigação. As evidências acima se aplicam ao CAM Windows. O contrato
+de acesso do porte está em [Arquitetura](ARQUITETURA.md#acesso-aos-dispositivos);
+esta investigação não valida a detecção de conflitos no Ubuntu.
+
+## Detalhe da iluminação observado no CAM
+
+**Evidência da referência Windows, coletada em 12/11/2026.** CAM 4.76.8,
+Kraken X e Smart Device V1. Com autorização explícita do usuário, foram feitas
+duas mudanças temporárias de iluminação pela interface do CAM; não houve
+alteração de refrigeração nem firmware.
+
+- No Anel em **Fixo**, ligar **Personalizar cores LED** substitui o chip de cor
+  pela instrução **Seleciona qualquer LED abaixo**. Cada um dos oito segmentos
+  da prévia é clicável e abre o seletor **COLOR SWATCHES**, com **Custom** e
+  **Cancelar**. Os segmentos apareceram brancos nessa sessão; não foi verificado
+  se essa cor é um padrão ou uma configuração por LED já persistida.
+- Na Fita em **Respirar**, as cores aparecem como amostras sem hexadecimal,
+  com **Add Color** ao lado. A velocidade fica abaixo da prévia, em um único
+  slider; o valor observado foi **Velocidade Normal**. Não foram mudadas as
+  cores, a velocidade nem o modo da Fita.
+- No Logótipo, selecionar **Temperatura do CPU** substitui a prévia por uma
+  lista de limites e cores, com o rótulo **é superior a**. Nessa sessão havia
+  sete linhas: 0 °C → `#00FF00`, 65 °C → `#84FF00`, 70 °C → `#BAFF00`,
+  75 °C → `#FFFF00`, 80 °C → `#FFAE00`, 85 °C → `#FF4800` e
+  90 °C → `#FF0000`. Há controles de remover linhas e de adicionar uma linha.
+  Os limites não foram editados; interpolação, comportamento na igualdade,
+  unidade após trocar °C/°F e modo GPU não foram verificados.
+
+Ao terminar, foi confirmado visualmente no CAM: Logótipo e Anel em **Fixo**
+`#51007A`, personalização do Anel desligada e Fita em **Respirar**.
+Isso confirma a restauração na interface; não foi feita medição física dos LEDs.
+
+Capturas e utilitário de observação ficam em `package/`, fora do Git:
+`cam-ring-per-led-on.png`, `cam-ring-led-selected.png`,
+`cam-logo-cpu-temperature.png`, `cam-lighting-restored.png` e `cam-observe.ps1`.
+O utilitário captura somente a janela do CAM, valida as coordenadas e restaura
+a posição do cursor após cada ação. As capturas não são recursos do porte.
+
+**Implementado no porte, sem validação no Ubuntu:** slider de velocidade com
+cinco níveis, amostras de cor com botão de adicionar e seleção de LED na prévia
+para abrir o seletor de cor. O seletor e os desenhos são próprios em egui;
+não foram copiados recursos do CAM. **Proposto:** modos por temperatura e
+seu editor de limites; a observação da interface não confirma sua implementação.
+
+## Revisão lado a lado de monitoramento, especificações e Profile Sync
+
+**Evidência da referência Windows, coletada em 12/11/2026, CAM 4.76.8.** Foram
+abertos os detalhes de CPU, GPU, placa-mãe, quatro módulos RAM, três discos, dez
+itens de áudio e o adaptador de rede visível. O procedimento só navegou pela
+interface; não mudou perfis, iluminação, refrigeração nem firmware.
+
+| Tela ou item | Campos/controles observados |
+| --- | --- |
+| Principais processos | Nome, CPU, GPU, RAM, Baixar e Fazer upload; seta de ordenação junto ao cabeçalho selecionado |
+| Rede (monitoramento) | Tráfego de envio e recebimento, com setas para cima e para baixo |
+| CPU | Fabricante, nome do código, clock padrão e atual, tipo de soquete, energia e TDP |
+| GPU | Modelo, clock atual e energia |
+| Placa-mãe | Modelo, chipset, southbridge, versão e data do BIOS |
+| Cada módulo RAM | Modelo, capacidade, frequência padrão, tipo e tempos |
+| Cada disco | Nome, fabricante, formato e capacidade |
+| Cada item de áudio | Nome, formato e número de canais; há valores N/A conforme o dispositivo |
+| Rede (especificações) | Nome do adaptador, tipo de conexão e endereço IP |
+| Profile Sync | Seletor de perfil mestre, Add Profile, Auto Launch desabilitado para Default e seleção separada dos perfis de iluminação/refrigeração |
+
+Capturas locais em `package/cam-monitor-review.png`, `package/cam-spec-*.png` e
+`package/cam-profile-menu.png`. O endereço IP observado não foi transcrito aqui.
+Esses campos não comprovam a disponibilidade de todas as leituras no Ubuntu.
+O porte mostra `—` para fontes ainda indisponíveis; a prévia usa exemplos simulados.
+
+Para **Personalizar cores LED** da Fita em **Respirar**, a
+[documentação pública do Smart Device V1](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-smart-device-v1-guide.md#rgb-lighting)
+descreve `super-breathing`: até 40 cores, uma por LED, em um único passo.
+O porte usa o formato de relatório já confirmado no CAM (`02 4b` + `03`), com o
+mesmo id de Respirar `0x07` e passo zero, preenchendo o vetor GRB por LED. Não foi
+copiado código do liquidctl nem criado novo comando. O layout foi testado com
+transporte simulado; aplicação física desse modo ainda não foi validada no Ubuntu.
 
 ## Protocolo
 

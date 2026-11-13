@@ -49,8 +49,20 @@ feche liquidctl, CoolerControl ou qualquer outro programa que use os dispositivo
     compare com o CAM no Windows.
 11. **Suspensão.** Suspenda e retome; os dispositivos voltam a **Pronto** e o perfil
     é reaplicado.
-12. **Interface.** Modo Mini, °C/°F, idioma EN-US, início com a sessão, fechar para
-    a bandeja.
+12. **Interface.** °C/°F, idioma EN-US, início com a sessão, fechar para a bandeja,
+    setas e ordenação dos processos, todos os detalhes de especificações e vários
+    canais de iluminação expandidos ao mesmo tempo. Mini Mode foi removido.
+13. **Profile Sync.** Salve perfis de iluminação/refrigeração, combine-os em um
+    perfil mestre e confira a ativação manual, por programa e por horário, incluindo
+    meia-noite e retorno a Default. Um perfil inválido ou canal ausente deve recusar
+    a aplicação e não ser exibido como ativo. Faça isso somente no ensaio de hardware
+    autorizado, observando as regras de segurança térmica das etapas anteriores.
+14. **Atualização do aplicativo.** Após instalar pelo script, confira o registro e
+    `--build-info`. Em Sobre, consulte a branch padrão do projeto. Só instale uma
+    revisão revisada, com backup da configuração; confira log, checksum e recursos.
+    Verifique a restauração do executável/registro em falha de publicação em uma
+    instalação de teste isolada. O controlador deve continuar ativo durante o build;
+    o reinício deve esperar o estado térmico de saída e liberar o controlador anterior.
 
 Registre também o que falhar: comando, mensagem exibida, `--status` e, para
 falhas de protocolo, a saída de `journalctl --user -b | grep nzxt-cam`.
