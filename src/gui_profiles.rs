@@ -655,136 +655,149 @@ impl App {
         let right = (total - left - 25.0).max(140.0);
         ui.horizontal_top(|ui| {
             // Coluna esquerda: pesquisa ou navegação de pastas, altura fixa.
-            ui.allocate_ui(Vec2::new(left, PROGRAM_LIST_HEIGHT + 56.0), |ui| {
-                ui.set_width(left);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(search)
-                            .hint_text(t("Pesquisar programas"))
-                            .desired_width((left - 170.0).max(80.0)),
-                    );
-                    if ui
-                        .add_sized([160.0, 36.0], egui::Button::new(t("Procurar programas")))
-                        .clicked()
-                    {
-                        *browsing = true;
-                        self.dispatch(Request::BrowsePrograms {
-                            directory: (&*directory).into(),
-                        });
-                    }
-                });
-                ui.add_space(12.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("program-results")
-                    .max_height(PROGRAM_LIST_HEIGHT)
-                    .min_scrolled_height(PROGRAM_LIST_HEIGHT)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if *browsing {
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(directory)
-                                        .desired_width((left - 100.0).max(80.0)),
-                                );
-                                if ui.button(t("Abrir")).clicked() {
-                                    self.dispatch(Request::BrowsePrograms {
-                                        directory: (&*directory).into(),
-                                    });
-                                }
+            ui.allocate_ui_with_layout(
+                Vec2::new(left, PROGRAM_LIST_HEIGHT + 56.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(left);
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(search)
+                                .hint_text(t("Pesquisar programas"))
+                                .background_color(BACKGROUND)
+                                .desired_width((left - 170.0).max(80.0)),
+                        );
+                        if ui
+                            .add_sized([160.0, 36.0], egui::Button::new(t("Procurar programas")))
+                            .clicked()
+                        {
+                            *browsing = true;
+                            self.dispatch(Request::BrowsePrograms {
+                                directory: (&*directory).into(),
                             });
-                            if let Some(parent) = state.program_browser.directory.parent()
-                                && ui.button(t("Pasta anterior")).clicked()
-                            {
-                                *directory = parent.to_string_lossy().into_owned();
-                                self.dispatch(Request::BrowsePrograms {
-                                    directory: parent.into(),
-                                });
-                            }
-                            for entry in &state.program_browser.entries {
-                                let name =
-                                    entry.path.file_name().unwrap_or_default().to_string_lossy();
-                                let label = if entry.directory {
-                                    format!("{name}/")
-                                } else {
-                                    name.into_owned()
-                                };
-                                if ui.selectable_label(false, label).clicked() {
-                                    if entry.directory {
-                                        *directory = entry.path.to_string_lossy().into_owned();
-                                        self.dispatch(Request::BrowsePrograms {
-                                            directory: entry.path.clone(),
-                                        });
-                                    } else {
-                                        let path = entry.path.to_string_lossy().into_owned();
-                                        if !connected.contains(&path) {
-                                            connected.push(path);
-                                        }
-                                        *browsing = false;
-                                    }
-                                }
-                            }
-                            if ui.button(t("Voltar à pesquisa")).clicked() {
-                                *browsing = false;
-                            }
-                        } else if search.trim().is_empty() {
-                            ui.add_space(PROGRAM_LIST_HEIGHT / 2.0 - 12.0);
-                            ui.vertical_centered(|ui| {
-                                ui.label(
-                                    RichText::new(t("Pesquise um jogo ou programa"))
-                                        .color(SECONDARY),
-                                );
-                            });
-                        } else {
-                            let needle = search.to_lowercase();
-                            let mut found = false;
-                            for program in state.programs.iter().filter(|p| {
-                                p.name.to_lowercase().contains(&needle)
-                                    || p.executable.to_lowercase().contains(&needle)
-                            }) {
-                                found = true;
-                                let selected = connected.contains(&program.executable);
-                                egui::Frame::new()
-                                    .fill(BACKGROUND)
-                                    .stroke(Stroke::new(
-                                        1.0,
-                                        if selected { ORCHID } else { BORDER },
-                                    ))
-                                    .inner_margin(12)
-                                    .show(ui, |ui| {
-                                        ui.set_width(ui.available_width());
-                                        ui.horizontal(|ui| {
-                                            ui.label(RichText::new(&program.name).size(17.0))
-                                                .on_hover_text(&program.executable);
-                                            ui.with_layout(
-                                                egui::Layout::right_to_left(egui::Align::Center),
-                                                |ui| {
-                                                    let text = t(if selected {
-                                                        "Remover"
-                                                    } else {
-                                                        "Conectar"
-                                                    });
-                                                    if dialog_button(ui, &text, !selected, true) {
-                                                        if selected {
-                                                            connected.retain(|exe| {
-                                                                exe != &program.executable
-                                                            });
-                                                        } else {
-                                                            connected
-                                                                .push(program.executable.clone());
-                                                        }
-                                                    }
-                                                },
-                                            );
-                                        });
-                                    });
-                                ui.add_space(8.0);
-                            }
-                            if !found {
-                                ui.label(t("Nenhum programa encontrado"));
-                            }
                         }
                     });
-            });
+                    ui.add_space(12.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("program-results")
+                        .max_height(PROGRAM_LIST_HEIGHT)
+                        .min_scrolled_height(PROGRAM_LIST_HEIGHT)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if *browsing {
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::TextEdit::singleline(directory)
+                                            .background_color(BACKGROUND)
+                                            .desired_width((left - 100.0).max(80.0)),
+                                    );
+                                    if ui.button(t("Abrir")).clicked() {
+                                        self.dispatch(Request::BrowsePrograms {
+                                            directory: (&*directory).into(),
+                                        });
+                                    }
+                                });
+                                if let Some(parent) = state.program_browser.directory.parent()
+                                    && ui.button(t("Pasta anterior")).clicked()
+                                {
+                                    *directory = parent.to_string_lossy().into_owned();
+                                    self.dispatch(Request::BrowsePrograms {
+                                        directory: parent.into(),
+                                    });
+                                }
+                                for entry in &state.program_browser.entries {
+                                    let name = entry
+                                        .path
+                                        .file_name()
+                                        .unwrap_or_default()
+                                        .to_string_lossy();
+                                    let label = if entry.directory {
+                                        format!("{name}/")
+                                    } else {
+                                        name.into_owned()
+                                    };
+                                    if ui.selectable_label(false, label).clicked() {
+                                        if entry.directory {
+                                            *directory = entry.path.to_string_lossy().into_owned();
+                                            self.dispatch(Request::BrowsePrograms {
+                                                directory: entry.path.clone(),
+                                            });
+                                        } else {
+                                            let path = entry.path.to_string_lossy().into_owned();
+                                            if !connected.contains(&path) {
+                                                connected.push(path);
+                                            }
+                                            *browsing = false;
+                                        }
+                                    }
+                                }
+                                if ui.button(t("Voltar à pesquisa")).clicked() {
+                                    *browsing = false;
+                                }
+                            } else if search.trim().is_empty() {
+                                ui.add_space(PROGRAM_LIST_HEIGHT / 2.0 - 12.0);
+                                ui.vertical_centered(|ui| {
+                                    ui.label(
+                                        RichText::new(t("Pesquise um jogo ou programa"))
+                                            .color(SECONDARY),
+                                    );
+                                });
+                            } else {
+                                let needle = search.to_lowercase();
+                                let mut found = false;
+                                for program in state.programs.iter().filter(|p| {
+                                    p.name.to_lowercase().contains(&needle)
+                                        || p.executable.to_lowercase().contains(&needle)
+                                }) {
+                                    found = true;
+                                    let selected = connected.contains(&program.executable);
+                                    egui::Frame::new()
+                                        .fill(BACKGROUND)
+                                        .stroke(Stroke::new(
+                                            1.0,
+                                            if selected { ORCHID } else { BORDER },
+                                        ))
+                                        .inner_margin(12)
+                                        .show(ui, |ui| {
+                                            ui.set_width(ui.available_width());
+                                            ui.horizontal(|ui| {
+                                                ui.label(RichText::new(&program.name).size(17.0))
+                                                    .on_hover_text(&program.executable);
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(
+                                                        egui::Align::Center,
+                                                    ),
+                                                    |ui| {
+                                                        let text = t(if selected {
+                                                            "Remover"
+                                                        } else {
+                                                            "Conectar"
+                                                        });
+                                                        if dialog_button(ui, &text, !selected, true)
+                                                        {
+                                                            if selected {
+                                                                connected.retain(|exe| {
+                                                                    exe != &program.executable
+                                                                });
+                                                            } else {
+                                                                connected.push(
+                                                                    program.executable.clone(),
+                                                                );
+                                                            }
+                                                        }
+                                                    },
+                                                );
+                                            });
+                                        });
+                                    ui.add_space(8.0);
+                                }
+                                if !found {
+                                    ui.label(t("Nenhum programa encontrado"));
+                                }
+                            }
+                        });
+                },
+            );
             // Divisória com a mesma altura das colunas (não ocupa a janela inteira).
             let (line, _) =
                 ui.allocate_exact_size(Vec2::new(25.0, PROGRAM_LIST_HEIGHT + 56.0), Sense::hover());
@@ -792,53 +805,57 @@ impl App {
                 [line.center_top(), line.center_bottom()],
                 Stroke::new(1.0, BORDER),
             );
-            ui.allocate_ui(Vec2::new(right, PROGRAM_LIST_HEIGHT + 56.0), |ui| {
-                ui.set_width(right);
-                ui.label(RichText::new(t("Programas conectados")).strong());
-                ui.add_space(12.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("connected-programs")
-                    .max_height(PROGRAM_LIST_HEIGHT)
-                    .show(ui, |ui| {
-                        let mut remove = None;
-                        for (index, executable) in connected.iter().enumerate() {
-                            let name = state
-                                .programs
-                                .iter()
-                                .find(|p| &p.executable == executable)
-                                .map(|p| p.name.as_str())
-                                .unwrap_or_else(|| {
-                                    executable.rsplit('/').next().unwrap_or(executable)
-                                });
-                            egui::Frame::new()
-                                .fill(PURPLE)
-                                .inner_margin(10)
-                                .show(ui, |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.horizontal(|ui| {
-                                        ui.label(name).on_hover_text(executable);
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if ui.button("×").clicked() {
-                                                    remove = Some(index);
-                                                }
-                                            },
-                                        );
+            ui.allocate_ui_with_layout(
+                Vec2::new(right, PROGRAM_LIST_HEIGHT + 56.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(right);
+                    ui.label(RichText::new(t("Programas conectados")).strong());
+                    ui.add_space(12.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("connected-programs")
+                        .max_height(PROGRAM_LIST_HEIGHT)
+                        .show(ui, |ui| {
+                            let mut remove = None;
+                            for (index, executable) in connected.iter().enumerate() {
+                                let name = state
+                                    .programs
+                                    .iter()
+                                    .find(|p| &p.executable == executable)
+                                    .map(|p| p.name.as_str())
+                                    .unwrap_or_else(|| {
+                                        executable.rsplit('/').next().unwrap_or(executable)
                                     });
-                                });
-                            ui.add_space(8.0);
-                        }
-                        if let Some(index) = remove {
-                            connected.remove(index);
-                        }
-                        if connected.is_empty() {
-                            ui.label(
-                                RichText::new(t("Nenhum programa conectado")).color(SECONDARY),
-                            );
-                        }
-                    });
-            });
+                                egui::Frame::new()
+                                    .fill(PURPLE)
+                                    .inner_margin(10)
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.horizontal(|ui| {
+                                            ui.label(name).on_hover_text(executable);
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if ui.button("×").clicked() {
+                                                        remove = Some(index);
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    });
+                                ui.add_space(8.0);
+                            }
+                            if let Some(index) = remove {
+                                connected.remove(index);
+                            }
+                            if connected.is_empty() {
+                                ui.label(
+                                    RichText::new(t("Nenhum programa conectado")).color(SECONDARY),
+                                );
+                            }
+                        });
+                },
+            );
         });
     }
 }
