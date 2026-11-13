@@ -56,6 +56,24 @@ ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 - Capturas do CAM: somente a janela, por `PrintWindow`, com cliques via `SetCursorPos`
   e `mouse_event` nas coordenadas da janela; devolver o cursor ao terminar.
 
+## Continuação de 13/11/2026 (sem o usuário, só Windows)
+
+Commits locais, ainda **não enviados** ao GitHub (`main` à frente de `origin/main`):
+
+| Commit | Entrega |
+| --- | --- |
+| `418b842` | Trabalho do Codex concluído: Profile Sync, atualização, prévia Windows |
+| `d9e1f53` | Diálogos do Profile Sync alinhados e traduzidos |
+| `cb72849` | Diálogo **Com programa** em duas colunas (conferido na prévia) |
+| `bd1f236` | Gráfico de Resfriando no estilo do CAM e seletor de fonte (conferido na prévia) |
+| `571dd4b` | Modos de iluminação por temperatura (CPU/GPU) com editor de limites (conferido na prévia) |
+| `ac2d056` | Teste do reenvio por temperatura; prévia Windows sem avisos; roteiro 15–17 |
+
+Verificado no Windows: `cargo test --no-default-features --features gui` (77),
+`cargo test --no-default-features` (76) e clippy para Linux com `-D warnings`
+nos dois builds. A conferência visual usou a prévia com dados simulados,
+capturando só a janela dela. Nada foi executado no Ubuntu.
+
 ## Próximos passos, na ordem
 
 0. **Concluído em 13/11/2026:** gráfico de Resfriando no estilo do CAM (captura do
