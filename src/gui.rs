@@ -1797,7 +1797,24 @@ impl App {
             self.expanded = if expanded { None } else { Some(key.to_owned()) };
         }
         if expanded || self.expanded.as_deref() == Some(key) {
-            self.cooling_detail(ui, channel, key, draft, applied, current, channel_state);
+            let sources: Vec<Source> = [Source::Liquid, Source::Cpu, Source::Gpu]
+                .into_iter()
+                .filter(|s| match s {
+                    Source::Liquid => has_liquid,
+                    Source::Cpu => true,
+                    Source::Gpu => !state.sensors.gpus.is_empty(),
+                })
+                .collect();
+            self.cooling_detail(
+                ui,
+                channel,
+                key,
+                draft,
+                applied,
+                current,
+                channel_state,
+                &sources,
+            );
         }
         let (line, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
@@ -1814,9 +1831,24 @@ impl App {
         applied: &ChannelCooling,
         current: Option<f64>,
         channel_state: Option<&crate::governor::ChannelState>,
+        sources: &[Source],
     ) {
-        egui::Frame::new().fill(DARKEST).inner_margin(12).show(ui, |ui| {
+        egui::Frame::new().fill(DARKEST).inner_margin(16).show(ui, |ui| {
             ui.set_width(ui.available_width());
+            // Seletor de fonte centralizado acima do gráfico, como no CAM.
+            ui.horizontal(|ui| {
+                ui.add_space((ui.available_width() - 330.0).max(0.0) / 2.0);
+                ui.label(RichText::new(t("Fonte de temperatura:")).size(15.0));
+                dropdown(ui, ("detail-source", key), &source_label(draft.source), 150.0, |ui| {
+                    for source in sources {
+                        if ui.selectable_label(draft.source == *source, source_label(*source)).clicked() {
+                            draft.source = *source;
+                            ui.close();
+                        }
+                    }
+                });
+            });
+            ui.add_space(4.0);
             if let Some(error) = channel_state.and_then(|c| c.error.as_ref()) {
                 ui.colored_label(ORANGE, t(error));
             }
@@ -2403,7 +2435,9 @@ fn lighting_preview(ui: &mut egui::Ui, channel: &LightingChannel, lighting: &mut
     }
 }
 
-/// Editor da curva: arrastar move pontos, duplo clique adiciona, botão direito remove.
+/// Editor da curva no estilo do gráfico do CAM: linhas horizontais suaves, eixo de
+/// 10° a 100°, linha e pontos verdes e marcador tracejado na temperatura atual.
+/// Arrastar move pontos, duplo clique adiciona, botão direito remove.
 #[allow(clippy::too_many_arguments)]
 fn curve_editor(
     ui: &mut egui::Ui,
@@ -2414,70 +2448,71 @@ fn curve_editor(
     limits: crate::curves::Limits,
     source: Source,
 ) -> bool {
-    let size = Vec2::new(ui.available_width().min(700.0), 200.0);
+    const DOMAIN: f32 = 105.0;
+    let grid = Color32::from_rgb(40, 42, 46);
+    let size = Vec2::new(ui.available_width().min(900.0), 270.0);
     let (response, painter) = ui.allocate_painter(size, Sense::click());
-    let rect = response.rect.shrink2(Vec2::new(34.0, 16.0));
-    let to_screen = |p: &Point| {
-        Pos2::new(
-            rect.left() + rect.width() * (p.temperature as f32 / 100.0),
-            rect.bottom() - rect.height() * (f32::from(p.duty) / 100.0),
+    // Margens: rótulos de % à esquerda, de temperatura embaixo e da leitura atual em cima.
+    let rect = Rect::from_min_max(
+        response.rect.min + Vec2::new(64.0, 34.0),
+        response.rect.max - Vec2::new(28.0, 30.0),
+    );
+    let x_of = |temperature: f64| rect.left() + rect.width() * (temperature as f32 / DOMAIN);
+    let y_of = |duty: f32| rect.bottom() - rect.height() * (duty / 100.0);
+    let to_screen = |p: &Point| Pos2::new(x_of(p.temperature), y_of(f32::from(p.duty)));
+    let from_screen = |pos: Pos2| {
+        let temperature = (((pos.x - rect.left()) / rect.width()) * DOMAIN).clamp(0.0, 100.0);
+        let duty = (((rect.bottom() - pos.y) / rect.height()) * 100.0).clamp(0.0, 100.0);
+        (
+            f64::from(temperature.round()),
+            (duty.round() as u8).max(limits.floor),
         )
     };
-    let from_screen = |pos: Pos2| {
-        let temperature = (((pos.x - rect.left()) / rect.width()) * 100.0).clamp(0.0, 100.0);
-        let duty = (((rect.bottom() - pos.y) / rect.height()) * 100.0).clamp(0.0, 100.0);
-        (f64::from(temperature.round()), duty.round() as u8)
-    };
-    painter.rect_filled(response.rect, 0, BACKGROUND);
-    for step in 0..=5 {
-        let fraction = step as f32 / 5.0;
-        let y = rect.bottom() - rect.height() * fraction;
-        let x = rect.left() + rect.width() * fraction;
+    for duty in [0.0, 25.0, 50.0, 75.0, 100.0] {
+        let y = y_of(duty);
         painter.line_segment(
             [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-            Stroke::new(1.0, BORDER),
-        );
-        painter.line_segment(
-            [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-            Stroke::new(1.0, BORDER),
+            Stroke::new(1.0, grid),
         );
         painter.text(
-            Pos2::new(rect.left() - 4.0, y),
+            Pos2::new(rect.left() - 12.0, y),
             Align2::RIGHT_CENTER,
-            format!("{}%", step * 20),
-            FontId::proportional(10.0),
-            SECONDARY,
-        );
-        painter.text(
-            Pos2::new(x, rect.bottom() + 2.0),
-            Align2::CENTER_TOP,
-            format!("{}°", step * 20),
-            FontId::proportional(10.0),
+            format!("{duty:.0}%"),
+            FontId::proportional(11.0),
             SECONDARY,
         );
     }
-    let floor_y = rect.bottom() - rect.height() * (f32::from(limits.floor) / 100.0);
-    painter.line_segment(
-        [
-            Pos2::new(rect.left(), floor_y),
-            Pos2::new(rect.right(), floor_y),
-        ],
-        Stroke::new(1.0, ORANGE.gamma_multiply(0.5)),
-    );
-    let critical_x = rect.left() + rect.width() * (source.critical() as f32 / 100.0);
-    painter.line_segment(
-        [
-            Pos2::new(critical_x, rect.top()),
-            Pos2::new(critical_x, rect.bottom()),
-        ],
-        Stroke::new(1.0, ORANGE.gamma_multiply(0.5)),
-    );
+    for temperature in (10..=100).step_by(10) {
+        painter.text(
+            Pos2::new(x_of(f64::from(temperature)), rect.bottom() + 10.0),
+            Align2::CENTER_TOP,
+            format!("{temperature}°"),
+            FontId::proportional(11.0),
+            SECONDARY,
+        );
+    }
+    if let Some(temperature) = current.filter(|t| t.is_finite()) {
+        let x = x_of(temperature.clamp(0.0, 100.0));
+        painter.extend(egui::Shape::dashed_line(
+            &[Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
+            Stroke::new(1.0, MEDIUM),
+            3.0,
+            3.0,
+        ));
+        painter.text(
+            Pos2::new(x, rect.top() - 8.0),
+            Align2::CENTER_BOTTOM,
+            format!("{}: {temperature:.0}°", source_label(source)),
+            FontId::proportional(12.0),
+            TEXT,
+        );
+    }
     let mut changed = false;
     if editable {
         let mut remove = None;
         for index in 0..points.len() {
             let center = to_screen(&points[index]);
-            let handle = Rect::from_center_size(center, Vec2::splat(14.0));
+            let handle = Rect::from_center_size(center, Vec2::splat(16.0));
             let point_response =
                 ui.interact(handle, ui.id().with((&id, index)), Sense::click_and_drag());
             if point_response.dragged()
@@ -2520,17 +2555,14 @@ fn curve_editor(
         }
     }
     let line: Vec<Pos2> = points.iter().map(&to_screen).collect();
-    painter.add(egui::Shape::line(line.clone(), Stroke::new(2.0, ORCHID)));
-    for position in line {
-        painter.circle_filled(position, if editable { 5.0 } else { 3.0 }, TEXT);
+    // Depois do último ponto a rotação se mantém; o traço segue até 100°, como no CAM.
+    let mut drawn = line.clone();
+    if let Some(last) = points.last().filter(|p| p.temperature < 100.0) {
+        drawn.push(Pos2::new(x_of(100.0), y_of(f32::from(last.duty))));
     }
-    if let Some(temperature) = current.filter(|t| t.is_finite()) {
-        let duty = curves::duty_at(points, temperature);
-        let position = to_screen(&Point {
-            temperature: temperature.clamp(0.0, 100.0),
-            duty,
-        });
-        painter.circle_stroke(position, 7.0, Stroke::new(2.0, GREEN));
+    painter.add(egui::Shape::line(drawn, Stroke::new(2.0, GREEN)));
+    for position in line {
+        painter.circle_filled(position, if editable { 5.5 } else { 4.5 }, GREEN);
     }
     if editable {
         ui.label(

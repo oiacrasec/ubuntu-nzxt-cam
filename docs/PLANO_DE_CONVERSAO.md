@@ -58,7 +58,7 @@ ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 
 ## Próximos passos, na ordem
 
-0. **Gráfico de Resfriando no estilo do CAM** (pedido em 13/11/2026, captura do
+0. **Concluído em 13/11/2026:** gráfico de Resfriando no estilo do CAM (captura do
    usuário): fundo `(18,18,20)` sem moldura; só linhas horizontais suaves em 0, 25,
    50, 75 e 100%; eixo de 10° a 100° de 10 em 10; linha e pontos verdes
    `(33,211,115)`; linha vertical tracejada na temperatura atual com rótulo
