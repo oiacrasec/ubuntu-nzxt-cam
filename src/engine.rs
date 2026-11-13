@@ -386,7 +386,11 @@ impl Engine {
             };
             for channel in &device.cooling {
                 let key = channel_key(&device.info.id, &channel.name);
-                let cooling = config.cooling.get(&key).cloned().unwrap_or_default();
+                let cooling = config
+                    .cooling
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| channel.default_cooling());
                 let state = device.channels.entry(channel.name.clone()).or_default();
                 let action = governor::decide(channel, &cooling, state, &inputs);
                 let result = match &action {
@@ -880,7 +884,11 @@ impl Engine {
             };
             for channel in &device.cooling {
                 let key = channel_key(&device.info.id, &channel.name);
-                let cooling = config.cooling.get(&key).cloned().unwrap_or_default();
+                let cooling = config
+                    .cooling
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| channel.default_cooling());
                 let result = if channel.internal_profile {
                     // Curva do perfil se a fonte for o líquido; senão Silent pelo líquido.
                     let liquid = if cooling.source == Source::Liquid {

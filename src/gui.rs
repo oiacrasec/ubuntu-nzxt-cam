@@ -1659,7 +1659,12 @@ impl App {
                 self.device_status(ui, device);
                 for channel in &device.cooling {
                     let key = key(device, &channel.name);
-                    let applied = state.config.cooling.get(&key).cloned().unwrap_or_default();
+                    let applied = state
+                        .config
+                        .cooling
+                        .get(&key)
+                        .cloned()
+                        .unwrap_or_else(|| channel.default_cooling());
                     let mut draft = self
                         .cooling
                         .get(&key)

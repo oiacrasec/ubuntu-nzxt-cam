@@ -154,6 +154,8 @@ Na prévia Windows, os três botões apenas simulam estados, sem rede, instalaç
 - No Kraken X, a curva com fonte **Líquido** roda no próprio dispositivo. Com fonte
   CPU ou GPU, o aplicativo grava uma curva plana que ainda sobe a 100% com o
   líquido a 60 °C, mesmo que o aplicativo pare.
+- Sem perfil salvo, o canal usa **Silent** com fonte **Líquido** no Kraken X e
+  fonte **CPU** no Smart Device V1, que não mede o líquido.
 - O Smart Device V1 não tem curva interna. Ao sair normalmente, os fans vão para a
   rotação de saída (padrão 100%). Se o processo morrer abruptamente, fica a última
   rotação gravada: é uma limitação conhecida.

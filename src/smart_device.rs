@@ -71,6 +71,7 @@ impl Driver for SmartDevice {
                 kind: ChannelKind::Fan,
                 limits: FAN_LIMITS,
                 internal_profile: false,
+                liquid_sensor: false,
             })
             .collect()
     }

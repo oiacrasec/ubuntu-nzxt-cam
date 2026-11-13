@@ -115,12 +115,14 @@ impl Driver for KrakenX {
                 kind: ChannelKind::Pump,
                 limits: PUMP_LIMITS,
                 internal_profile: internal,
+                liquid_sensor: true,
             },
             CoolingChannel {
                 name: "fan".into(),
                 kind: ChannelKind::Fan,
                 limits: FAN_LIMITS,
                 internal_profile: internal,
+                liquid_sensor: true,
             },
         ]
     }

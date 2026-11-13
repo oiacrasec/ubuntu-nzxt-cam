@@ -1,5 +1,5 @@
 use crate::{
-    curves::{Limits, Point},
+    curves::{ChannelCooling, Limits, Point, Source},
     devices::{Info, Kind, Transport},
     lighting::{Capability, ChannelLighting},
 };
@@ -21,6 +21,24 @@ pub struct CoolingChannel {
     pub limits: Limits,
     /// O firmware executa curvas pela temperatura do líquido sem o aplicativo.
     pub internal_profile: bool,
+    /// O dispositivo mede a temperatura do líquido (fonte Líquido disponível).
+    #[serde(default)]
+    pub liquid_sensor: bool,
+}
+
+impl CoolingChannel {
+    /// Refrigeração de um canal sem perfil salvo. Sem sensor de líquido, a fonte
+    /// padrão é a CPU; Líquido levaria o canal a segurança permanente.
+    pub fn default_cooling(&self) -> ChannelCooling {
+        ChannelCooling {
+            source: if self.liquid_sensor {
+                Source::Liquid
+            } else {
+                Source::Cpu
+            },
+            ..ChannelCooling::default()
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -98,9 +98,24 @@ dispositivos. Relatórios brutos e decodificação em
 [Protocolo](REFERENCIA_WINDOWS.md#protocolo); eles também são os vetores dos testes
 de `protocol.rs`, `kraken_x.rs` e `smart_device.rs`.
 
-### Ubuntu
+### Ubuntu — 13/11/2026
 
-Nenhuma execução no Ubuntu foi registrada até 12/11/2026. Os testes automáticos
-rodaram no Windows (Rust 1.100) com `cargo test`, com e sem recursos padrão, e
-`cargo clippy` para `x86_64-unknown-linux-gnu`; isso não valida hidraw, hwmon,
-udev, NVML, bandeja nem a janela no Linux.
+Primeira execução no Ubuntu, revisão `81e5b3f` e correção da fonte padrão do
+Smart Device. Rust 1.99.1, kernel 7.0.0-43.
+
+| Etapa | Resultado |
+| --- | --- |
+| 1. Build e testes | `cargo test`: 88 testes; `--no-default-features`: 87; `cargo clippy --all-targets` sem avisos |
+| 2. Descoberta | `kraken_x:6D8B4469545` em `/dev/hidraw10`, `smart_device:876F27655052` em `/dev/hidraw9` |
+| 3. Sensores | CPU pacote 43 °C; RTX 4070 SUPER 46 °C, igual ao `nvidia-smi`; RAM, rede, NVMe e discos sem erro. `lm-sensors` não instalado, CPU não comparada |
+| 4. Permissões | Antes da regra, os dois em `permission_denied` com a mensagem de Configurações. Regra instalada pela interface; ACL `user:cesar:rw-` nos dois nós e estado **Pronto** |
+| 5. Leitura | Kraken: líquido 35,1 °C, bomba 1868 RPM, fan 0 RPM, firmware 6.2 (exibição do CAM para `06 00 00 02`). Smart Device: fan 1 vazio, fans 2 e 3 em ~1500 RPM a 100%, firmware 1.7 |
+
+Falha encontrada na etapa 5 e corrigida: sem perfil salvo, os fans do Smart Device
+herdavam a fonte **Líquido**, que o dispositivo não mede, e ficavam em
+**Segurança: fonte de temperatura indisponível** a 100%. Agora o padrão desse canal
+é **Silent** pela CPU (`CoolingChannel::default_cooling`). Depois da correção, com
+a CPU a 41 °C, os três fans foram para 25% (fans 2 e 3 em ~1000 RPM), sem segurança,
+e o Kraken manteve a curva interna pelo líquido.
+
+Etapas 6 a 18 ainda não foram executadas no Ubuntu.

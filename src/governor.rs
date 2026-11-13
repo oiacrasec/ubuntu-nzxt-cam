@@ -125,6 +125,7 @@ mod tests {
                 ceiling: 100,
             },
             internal_profile: internal,
+            liquid_sensor: internal,
         }
     }
 
@@ -155,6 +156,24 @@ mod tests {
         let action = decide(channel, cooling, state, &inputs);
         applied(state, &action);
         action
+    }
+
+    #[test]
+    fn channel_without_liquid_sensor_defaults_to_cpu_instead_of_safety() {
+        // Smart Device V1: sem perfil salvo, o padrão não pode cair numa fonte
+        // que o dispositivo não mede.
+        let channel = channel(false);
+        let cooling = channel.default_cooling();
+        assert_eq!(cooling.source, Source::Cpu);
+        let mut state = ChannelState::default();
+        let action = run(&channel, &cooling, &mut state, &readings(Some(30.0)), None);
+        assert!(state.safety.is_none(), "{:?}", state.safety);
+        assert!(matches!(action, Action::Duty(duty) if duty < SAFETY_DUTY));
+    }
+
+    #[test]
+    fn channel_with_liquid_sensor_keeps_liquid_default() {
+        assert_eq!(channel(true).default_cooling().source, Source::Liquid);
     }
 
     #[test]
