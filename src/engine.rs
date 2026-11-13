@@ -51,6 +51,18 @@ pub enum Request {
         mini_always_on_top: Option<bool>,
         #[serde(default)]
         gpu_index: Option<usize>,
+        #[serde(default)]
+        close_to_tray: Option<bool>,
+    },
+    /// Substitui as preferências de interface (painéis, Mini Mode, idioma…).
+    UpdateUi {
+        ui: crate::config::UiConfig,
+    },
+    ExportConfig {
+        path: PathBuf,
+    },
+    ImportConfig {
+        path: PathBuf,
     },
     SetAutostart {
         enabled: bool,
@@ -96,6 +108,7 @@ pub struct Snapshot {
     pub permissions: permissions::State,
     pub autostart: bool,
     pub languages: Vec<String>,
+    pub specs: crate::specs::Specs,
     pub message: String,
     pub error: Option<String>,
     /// Incrementado a cada pedido de mostrar a janela (bandeja, segunda instância).
@@ -167,6 +180,7 @@ impl Engine {
             state: Snapshot {
                 config,
                 languages: crate::i18n::available(&config_path),
+                specs: crate::specs::read_specs(&system.sys, &system.proc_),
                 ..Default::default()
             },
             shared: SharedState::default(),
@@ -442,6 +456,7 @@ impl Engine {
                 mini_mode,
                 mini_always_on_top,
                 gpu_index,
+                close_to_tray,
             } => {
                 let mut config = self.state.config.clone();
                 if let Some(language) = language {
@@ -466,8 +481,33 @@ impl Engine {
                 if let Some(index) = gpu_index {
                     config.governor.gpu_index = index;
                 }
+                if let Some(close) = close_to_tray {
+                    config.ui.close_to_tray = close;
+                }
                 self.save_config(config)?;
                 Ok("Configurações salvas".into())
+            }
+            Request::UpdateUi { ui } => {
+                if ui.language != self.state.config.ui.language {
+                    crate::i18n::load(&ui.language, &self.config_path)?;
+                }
+                let mut config = self.state.config.clone();
+                config.ui = ui;
+                self.save_config(config)?;
+                Ok("Configurações salvas".into())
+            }
+            Request::ExportConfig { path } => {
+                self.state.config.save(&path)?;
+                Ok(format!("Configurações exportadas para {}", path.display()))
+            }
+            Request::ImportConfig { path } => {
+                if !path.is_file() {
+                    bail!("Arquivo de backup não encontrado: {}", path.display());
+                }
+                let config = Config::load(&path)?;
+                self.save_config(config)?;
+                self.cycle();
+                Ok("Configurações importadas".into())
             }
             Request::SetAutostart { enabled } => {
                 if enabled {

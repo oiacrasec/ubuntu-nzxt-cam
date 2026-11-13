@@ -35,16 +35,22 @@ Pela CLI: `nzxt-cam --prepare-permissions`, depois `nzxt-cam --confirm-plan ID`.
 
 ## Telas
 
-- **Monitoramento**: CPU, GPU, RAM, rede, armazenamento e, por dispositivo, temperatura
-  do líquido, RPM da bomba e dos fans e ruído do gabinete.
-- **Refrigeração**: por canal, perfis **Silent**, **Performance**, **Fixed** e **Custom**,
-  fonte **Líquido**, **CPU** ou **GPU**, editor de curva e **Aplicar curva a outros canais**.
-- **Iluminação**: modo, cores, velocidade e direção conforme o que o canal aceita.
-- **Configurações**: idioma, °C/°F, temperatura da CPU por pacote ou média dos núcleos,
-  início com a sessão, início na bandeja, Modo Mini e acesso aos dispositivos.
+A janela segue o layout do NZXT CAM: barra superior, menu lateral e cartões.
 
-O botão **▣** no topo abre o **Modo Mini**, uma janela compacta, opcionalmente
-sempre no topo. Com a bandeja disponível, fechar a janela mantém o governador
+- **PC Monitoring**: CPU e GPU (carga, temperatura, clock, ventilador), RAM, rede,
+  armazenamento por disco montado e principais processos.
+- **Especificações do sistema**: CPU, GPU, placa-mãe, RAM, armazenamento, áudio e rede,
+  com detalhes da CPU ou da GPU ao lado.
+- **Iluminação**: por canal, brilho e modo; clicar na linha abre cores, velocidade e direção.
+- **Resfriando**: temperaturas de CPU, GPU e líquido; por canal, RPM, fonte
+  (**Líquido**, **CPU**, **GPU**) e perfil **Silencioso**, **Desempenho**, **Fixo** ou
+  **Personalizado**. Clicar na linha abre o editor de curva.
+- **Configurações**: **Geral** (idioma, °C/°F, temperatura da CPU, bandeja, início,
+  backup em `~/nzxt-cam-backup.json` e painéis visíveis), **Mini Mode** (tamanho,
+  orientação, sempre no topo e leituras), **NZXT Firmware**, **Acesso aos dispositivos**
+  e **Sobre**.
+
+O ícone de janelas no topo abre o **Mini Mode**. Com a bandeja disponível, fechar a janela mantém o governador
 ativo; **Sair** na bandeja encerra o aplicativo. No GNOME, a bandeja pode exigir a
 extensão AppIndicator.
 

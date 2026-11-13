@@ -101,6 +101,8 @@ pub struct ChannelLighting {
     /// Tamanho do grupo de LEDs em modos de marquee (3 a 6 no CAM).
     pub led_size: u8,
     pub moving: bool,
+    /// Brilho de 0 a 100%, aplicado às cores antes do envio.
+    pub brightness: u8,
 }
 
 impl Default for ChannelLighting {
@@ -112,6 +114,7 @@ impl Default for ChannelLighting {
             backwards: false,
             led_size: 3,
             moving: false,
+            brightness: 100,
         }
     }
 }
@@ -139,6 +142,9 @@ impl ChannelLighting {
                 capability.min_colors,
                 capability.max_colors
             );
+        }
+        if self.brightness > 100 {
+            bail!("Brilho deve estar entre 0 e 100%");
         }
         if !(3..=6).contains(&self.led_size) {
             bail!("Tamanho do grupo de LEDs deve estar entre 3 e 6");

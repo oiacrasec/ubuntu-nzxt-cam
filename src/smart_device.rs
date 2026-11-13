@@ -134,7 +134,12 @@ impl Driver for SmartDevice {
                 })
                 .collect(),
             noise_db: (!noise.is_empty()).then(|| noise.iter().sum::<f64>() / noise.len() as f64),
-            firmware: None,
+            firmware: self
+                .fans
+                .iter()
+                .flatten()
+                .next()
+                .map(|f| format!("{}.{}", f.firmware.0, f.firmware.1)),
         })
     }
 
@@ -206,6 +211,7 @@ mod tests {
         let rpm: Vec<_> = status.fans.iter().map(|f| f.rpm).collect();
         assert_eq!(rpm, vec![Some(0), Some(1306), Some(1341)]);
         assert!((status.noise_db.unwrap() - 256.0 / 3.0).abs() < 1e-9);
+        assert_eq!(status.firmware.as_deref(), Some("1.7"));
     }
 
     #[test]

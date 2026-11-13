@@ -183,7 +183,6 @@ impl Driver for KrakenX {
     fn status(&mut self) -> Result<Status> {
         let status = self.read_status()?;
         self.firmware = Some(status.firmware);
-        let (a, b, c, d) = status.firmware;
         Ok(Status {
             liquid_temperature: Some(status.liquid),
             fans: vec![
@@ -199,7 +198,7 @@ impl Driver for KrakenX {
                 },
             ],
             noise_db: None,
-            firmware: Some(format!("{a}.{}.{d}", u16::from_be_bytes([b, c]))),
+            firmware: Some(protocol::kraken_firmware(status.firmware)),
         })
     }
 
@@ -296,7 +295,7 @@ mod tests {
         let status = device.status().unwrap();
         assert_eq!(status.liquid_temperature, Some(37.1));
         assert_eq!(status.fans[0].rpm, Some(2034));
-        assert_eq!(status.firmware.as_deref(), Some("6.0.2"));
+        assert_eq!(status.firmware.as_deref(), Some("6.2"));
     }
 
     #[test]

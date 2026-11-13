@@ -45,12 +45,29 @@ pub struct Network {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Disk {
+    pub mount: String,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Process {
+    pub name: String,
+    /// Fração de toda a CPU da máquina, como no CAM.
+    pub cpu_percent: f64,
+    pub ram_bytes: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Readings {
     pub cpu: Cpu,
     pub gpus: Vec<Gpu>,
     pub memory: Option<Memory>,
     pub storage: Vec<Storage>,
     pub network: Network,
+    pub disks: Vec<Disk>,
+    pub processes: Vec<Process>,
     /// Falhas de leitura por fonte; ausência de fonte não é erro.
     pub errors: BTreeMap<String, String>,
 }
@@ -84,8 +101,68 @@ pub struct Sensors {
     proc_: PathBuf,
     previous_cpu: Option<CpuTimes>,
     previous_net: Option<(Instant, u64, u64)>,
+    previous_processes: BTreeMap<u32, u64>,
+    previous_process_total: Option<u64>,
     #[cfg(feature = "nvidia")]
     nvml: Option<std::result::Result<nvml_wrapper::Nvml, String>>,
+}
+
+/// Tamanho de página do Linux x86-64, usado para converter o RSS de `/proc/*/stat`.
+const PAGE_SIZE: u64 = 4096;
+const TOP_PROCESSES: usize = 5;
+
+/// Nome, ticks de CPU (utime + stime) e RSS em páginas de `/proc/<pid>/stat`.
+fn parse_process_stat(stat: &str) -> Option<(String, u64, u64)> {
+    let open = stat.find('(')?;
+    let close = stat.rfind(')')?;
+    let name = stat.get(open + 1..close)?.to_owned();
+    let fields: Vec<&str> = stat.get(close + 1..)?.split_whitespace().collect();
+    // Após o nome: estado é o campo 3; utime 14, stime 15, rss 24 (numeração do proc(5)).
+    let utime: u64 = fields.get(11)?.parse().ok()?;
+    let stime: u64 = fields.get(12)?.parse().ok()?;
+    let rss: u64 = fields.get(21)?.parse().ok()?;
+    Some((name, utime + stime, rss))
+}
+
+/// Pontos de montagem de dispositivos reais em `/proc/mounts`, sem duplicar dispositivo.
+pub fn real_mounts(text: &str) -> Vec<String> {
+    let mut seen = Vec::new();
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        let (Some(device), Some(mount), Some(kind)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        if !device.starts_with("/dev/")
+            || device.starts_with("/dev/loop")
+            || matches!(kind, "squashfs" | "iso9660" | "udf")
+            || seen.contains(&device)
+        {
+            continue;
+        }
+        seen.push(device);
+        out.push(mount.replace("\\040", " "));
+    }
+    out
+}
+
+#[cfg(unix)]
+fn disk_usage(mount: &str) -> Option<Disk> {
+    let stat = nix::sys::statvfs::statvfs(mount).ok()?;
+    let fragment = stat.fragment_size();
+    let total = stat.blocks() * fragment;
+    let free = stat.blocks_free() * fragment;
+    (total > 0).then(|| Disk {
+        mount: mount.to_owned(),
+        total_bytes: total,
+        used_bytes: total.saturating_sub(free),
+    })
+}
+
+#[cfg(not(unix))]
+fn disk_usage(_: &str) -> Option<Disk> {
+    None
 }
 
 impl Default for Sensors {
@@ -145,6 +222,8 @@ impl Sensors {
             proc_: proc_.into(),
             previous_cpu: None,
             previous_net: None,
+            previous_processes: BTreeMap::new(),
+            previous_process_total: None,
             #[cfg(feature = "nvidia")]
             nvml: None,
         }
@@ -171,6 +250,13 @@ impl Sensors {
         self.read_cpu(&hwmons, &mut readings);
         self.read_memory(&mut readings);
         self.read_network(&mut readings);
+        self.read_processes(&mut readings);
+        if let Ok(mounts) = fs::read_to_string(self.proc_.join("mounts")) {
+            readings.disks = real_mounts(&mounts)
+                .iter()
+                .filter_map(|m| disk_usage(m))
+                .collect();
+        }
         for hwmon in &hwmons {
             if matches!(hwmon.name.as_str(), "nvme" | "drivetemp") {
                 let temperature = hwmon
@@ -318,6 +404,61 @@ impl Sensors {
             }
         }
         self.previous_net = Some((now, rx, tx));
+    }
+
+    fn read_processes(&mut self, readings: &mut Readings) {
+        let Some(total) = fs::read_to_string(self.proc_.join("stat"))
+            .ok()
+            .as_deref()
+            .and_then(parse_cpu_times)
+            .map(|t| t.total)
+        else {
+            return;
+        };
+        let mut current = BTreeMap::new();
+        let mut list = Vec::new();
+        let elapsed = self
+            .previous_process_total
+            .map(|previous| total.saturating_sub(previous));
+        if let Ok(entries) = fs::read_dir(&self.proc_) {
+            for entry in entries.flatten() {
+                let Some(pid) = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|s| s.parse::<u32>().ok())
+                else {
+                    continue;
+                };
+                let Some((name, ticks, rss)) = fs::read_to_string(entry.path().join("stat"))
+                    .ok()
+                    .as_deref()
+                    .and_then(parse_process_stat)
+                else {
+                    continue;
+                };
+                current.insert(pid, ticks);
+                if let (Some(elapsed), Some(previous)) =
+                    (elapsed, self.previous_processes.get(&pid))
+                    && elapsed > 0
+                {
+                    list.push(Process {
+                        name,
+                        cpu_percent: ticks.saturating_sub(*previous) as f64 * 100.0
+                            / elapsed as f64,
+                        ram_bytes: rss * PAGE_SIZE,
+                    });
+                }
+            }
+        }
+        list.sort_by(|a, b| {
+            b.cpu_percent
+                .total_cmp(&a.cpu_percent)
+                .then(b.ram_bytes.cmp(&a.ram_bytes))
+        });
+        list.truncate(TOP_PROCESSES);
+        readings.processes = list;
+        self.previous_processes = current;
+        self.previous_process_total = Some(total);
     }
 
     #[cfg(feature = "nvidia")]
@@ -473,6 +614,48 @@ pub(crate) mod tests {
         assert_eq!(readings.cpu_temperature(false), None);
         assert!(readings.memory.is_none());
         assert!(readings.errors.contains_key("cpu"));
+    }
+
+    fn process(root: &Path, pid: u32, name: &str, ticks: u64, rss: u64) {
+        write(
+            root,
+            &format!("proc/{pid}/stat"),
+            &format!(
+                "{pid} ({name}) S 1 1 1 0 -1 4194560 100 0 0 0 {ticks} 0 0 0 20 0 1 0 100 1000 {rss} 18446744073709551615\n"
+            ),
+        );
+    }
+
+    #[test]
+    fn ranks_processes_by_cpu_share() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        intel_tree(root, "47500\n");
+        process(root, 10, "pycharm64", 100, 1000);
+        process(root, 11, "Web Content (x)", 100, 50);
+        let mut sensors = sensors(root);
+        assert!(sensors.read().processes.is_empty());
+        write(root, "proc/stat", "cpu  150 0 150 900 0 0 0 0 0 0\n");
+        process(root, 10, "pycharm64", 120, 1000);
+        process(root, 11, "Web Content (x)", 150, 50);
+        let processes = sensors.read().processes;
+        assert_eq!(processes[0].name, "Web Content (x)");
+        assert!((processes[0].cpu_percent - 25.0).abs() < 1e-9);
+        assert!((processes[1].cpu_percent - 10.0).abs() < 1e-9);
+        assert_eq!(processes[1].ram_bytes, 1000 * PAGE_SIZE);
+    }
+
+    #[test]
+    fn lists_real_mounts_once() {
+        let mounts = real_mounts(
+            "/dev/nvme0n1p2 / ext4 rw 0 0\n\
+             proc /proc proc rw 0 0\n\
+             /dev/loop3 /snap/core squashfs ro 0 0\n\
+             /dev/sda1 /media/my\\040disk ntfs3 rw 0 0\n\
+             /dev/nvme0n1p2 /var/snap ext4 rw 0 0\n",
+        );
+        assert_eq!(mounts, vec!["/", "/media/my disk"]);
+        assert!(parse_process_stat("garbage").is_none());
     }
 
     #[test]

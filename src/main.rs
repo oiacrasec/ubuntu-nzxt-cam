@@ -16,6 +16,7 @@ mod permissions;
 mod protocol;
 mod sensors;
 mod smart_device;
+mod specs;
 #[cfg(all(feature = "tray", target_os = "linux"))]
 mod tray;
 

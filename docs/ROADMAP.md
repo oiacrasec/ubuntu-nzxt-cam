@@ -20,7 +20,7 @@ distingue código existente, evidência, lacunas e condições de aceitação.
 | Smart Device V1: iluminação | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
 | Governador CPU/GPU → fans | Proposto | Resposta e falha de fonte em ensaio controlado |
 | Profile Sync | Proposto | Ativação por programa e por horário |
-| Interface (layout CAM, Modo Mini, bandeja) | Proposto | Comparação visual com o CAM |
+| Interface (layout CAM, Modo Mini, bandeja) | Implementado, layout e paleta das telas do CAM 4.76.8 | Conferir no Ubuntu contra as capturas; Profile Sync pendente |
 | Instalação, atualização, remoção | Proposto | Prefixo do usuário e preservação de dados |
 | Firmware, conta, telemetria, loja | Fora do escopo | — |
 | Outras famílias do CAM e outras marcas | Fora do escopo atual | Exigem hardware para validar |

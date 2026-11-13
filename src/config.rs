@@ -29,6 +29,81 @@ impl TemperatureUnit {
     }
 }
 
+/// Telas visíveis no menu lateral (Configurações › Geral › Painéis).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Panels {
+    pub monitoring: bool,
+    pub specs: bool,
+    pub lighting: bool,
+    pub cooling: bool,
+}
+
+impl Default for Panels {
+    fn default() -> Self {
+        Self {
+            monitoring: true,
+            specs: true,
+            lighting: true,
+            cooling: true,
+        }
+    }
+}
+
+/// Leituras exibidas no Mini Mode; o padrão segue o do CAM.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MiniReadings {
+    pub cpu_temperature: bool,
+    pub cpu_load: bool,
+    pub cpu_clock: bool,
+    pub cpu_fan: bool,
+    pub gpu_temperature: bool,
+    pub gpu_load: bool,
+    pub gpu_clock: bool,
+    pub gpu_fan: bool,
+    pub ram_load: bool,
+    pub network: bool,
+    pub liquid_temperature: bool,
+}
+
+impl Default for MiniReadings {
+    fn default() -> Self {
+        Self {
+            cpu_temperature: true,
+            cpu_load: false,
+            cpu_clock: true,
+            cpu_fan: false,
+            gpu_temperature: true,
+            gpu_load: true,
+            gpu_clock: false,
+            gpu_fan: false,
+            ram_load: false,
+            network: false,
+            liquid_temperature: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MiniConfig {
+    pub vertical: bool,
+    /// Tamanho de 50 a 150%.
+    pub scale: u8,
+    pub readings: MiniReadings,
+}
+
+impl Default for MiniConfig {
+    fn default() -> Self {
+        Self {
+            vertical: false,
+            scale: 100,
+            readings: MiniReadings::default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
@@ -39,6 +114,10 @@ pub struct UiConfig {
     pub cpu_average_temperature: bool,
     pub mini_mode: bool,
     pub mini_always_on_top: bool,
+    /// Fechar a janela mantém o aplicativo na bandeja (padrão do CAM).
+    pub close_to_tray: bool,
+    pub panels: Panels,
+    pub mini: MiniConfig,
 }
 
 impl Default for UiConfig {
@@ -50,6 +129,9 @@ impl Default for UiConfig {
             cpu_average_temperature: false,
             mini_mode: false,
             mini_always_on_top: true,
+            close_to_tray: true,
+            panels: Panels::default(),
+            mini: MiniConfig::default(),
         }
     }
 }
@@ -133,6 +215,9 @@ impl Config {
     pub fn validate(&self) -> Result<()> {
         if !crate::i18n::valid_tag(&self.ui.language) {
             bail!("Código de idioma inválido");
+        }
+        if !(50..=150).contains(&self.ui.mini.scale) {
+            bail!("Tamanho do Mini Mode deve estar entre 50 e 150%");
         }
         if !(250..=10_000).contains(&self.governor.interval_ms) {
             bail!("Intervalo do governador deve estar entre 250 e 10000 ms");

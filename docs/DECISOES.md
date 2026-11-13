@@ -76,6 +76,20 @@ carrega `libnvidia-ml.so` na primeira leitura. Sem driver NVIDIA, a GPU fica
 ausente sem erro; o build não exige CUDA. `nvidia-smi` por processo a cada ciclo
 foi descartado pelo custo de criar um processo por segundo. GPUs AMD usam hwmon.
 
+## Interface igual ao CAM, com arte própria — 12/11/2026
+
+**Problema:** o usuário quer a interface igual à do CAM. **Referência:** capturas
+da janela do CAM 4.76.8 (somente a janela, com autorização do usuário) e o tema
+`lib/colors.ts` do renderer. **Escolha:** reproduzir estrutura, ordem das telas,
+posição dos elementos, paleta (fundo `(26,28,30)`, menu `(18,18,20)`, bordas
+`(52,56,60)`, controles `(73,72,81)`, texto `(232,235,237)`, roxo `(100,10,146)`,
+orquídea `(191,76,191)`), tamanhos e rótulos. Ícones são desenhos próprios em
+código; logotipos, ilustrações e as fontes licenciadas pela NZXT (Akkurat, Gotham)
+não são copiados nem extraídos da instalação. **Fora da interface, a pedido do
+usuário:** Áudio, Suporte e Beta. **Sem equivalente no hardware ou no porte:**
+Privacidade (o porte não coleta dados), Graphics API (tela LCD), Serial Devices.
+**Pendente:** Profile Sync, cores personalizadas e opacidade do Mini Mode.
+
 ## Como registrar uma nova decisão
 
 Indicar data, problema, contexto, alternativas examinadas, escolha, consequências
