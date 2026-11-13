@@ -411,7 +411,7 @@ impl Engine {
                 .as_ref()
                 .map(|capture| capture.levels())
                 .unwrap_or_default();
-            return Some(lighting.audio_frame(levels.level, levels.bass, leds));
+            return Some(lighting.audio_frame(levels, leds));
         }
         let sensors = &self.state.sensors;
         lighting.resolved(
@@ -980,7 +980,8 @@ impl Engine {
             self.cycle();
             changed = true;
         }
-        // Os quadros de áudio acompanham o laço do controlador (cerca de 10 por segundo).
+        // Os quadros de áudio acompanham o laço do controlador (cerca de 20 por segundo,
+        // o ritmo medido no CAM).
         let had_error = self.state.error.is_some();
         self.refresh_audio_lighting();
         if self.state.error.is_some() != had_error {

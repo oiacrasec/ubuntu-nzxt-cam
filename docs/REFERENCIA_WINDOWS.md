@@ -193,10 +193,38 @@ temperatura e áudio. Com uma cor, o painel mostra o botão com o hexadecimal;
 com várias, amostras e **Add Color**. Velocidade, direção, tamanho do LED e
 movimento ficam numa linha abaixo da prévia.
 
+### Captura USB dos modos de áudio (13/11/2026)
+
 Os modos de áudio são calculados pelo núcleo nativo do CAM (`cam-core`), sem
-algoritmo legível; o porte usa comportamento próprio, descrito em
-`ChannelLighting::audio_frame`. O id `0x0d` do modo Onda no Smart Device vem dos
-fatos de protocolo do liquidctl (`super-wave`), não de captura do CAM.
+algoritmo legível. Para ver o comportamento, o tráfego USB foi gravado com
+USBPcap 1.5.4 enquanto o CAM tocava música. O CAM tinha se atualizado sozinho
+para a **4.76.9.72**, então a captura vale para essa versão. O estado de
+iluminação foi restaurado depois, pelo arquivo `lightingController.json` salvo
+antes, com o CAM fechado.
+
+| Modo | O que o CAM enviou |
+| --- | --- |
+| Nivelado (Anel) | `02 4c 02`, modo Fixo, cerca de 20 quadros por segundo. Medidor: os N primeiros LEDs acesos, o LED *i* com a cor *i* da lista, sem reduzir o brilho; os demais apagados (`1 2 3 4 5 6 . .`) |
+| Sincronização (Anel) | O mesmo medidor, mais suave: muda no máximo 2 passos para cima e 3 para baixo por quadro (Nivelado chega a 4) |
+| Graves (Anel e Logótipo) | Todos os LEDs com `#51007A` multiplicada pela intensidade dos graves (até cerca de 75%) |
+| Nivelado e Sincronização (Logótipo) | Uma cor da lista, com brilho total: a do último passo aceso do medidor de 8 passos |
+| Onda (Fita) | Um único `02 4b` com modo `0x00` e todos os LEDs apagados |
+| Nivelado, Sincronização, Graves e Ganho (Fita) | Nenhum relatório de iluminação |
+
+Na Fita do Smart Device V1, portanto, o CAM 4.76.9 apaga o canal em Onda e não
+anima os modos de áudio. O porte mantém esses modos funcionando: os de áudio
+usam o mesmo medidor sobre os 40 LEDs do canal, e Onda envia o modo `0x0d`
+(`super-wave` nos fatos de protocolo do liquidctl), ainda sem confirmação no
+hardware. O algoritmo de Ganho é próprio do porte.
+
+Durante a captura, o Kraken recebeu cerca de 36 comandos de refrigeração por
+segundo, sempre iguais (`02 4d 80 14 1e`). O usuário relatou um provável conflito
+do CAM com outro software de iluminação (ASUS ou iCUE) nesta máquina; a origem
+dessa repetição não foi investigada.
+
+Arquivos em `package/usb-captura/`: as capturas `captura1-logo-graves.pcap` e
+`captura2-anel.pcap`, os roteiros de captura e de varredura e os scripts de
+análise `ler_pcap.py`, `kraken.py` e `anel2.py`.
 Folhas de contato com os painéis: `package/cam-efeitos-anel.png` e
 `package/cam-efeitos-fita.png`.
 O utilitário captura somente a janela do CAM, valida as coordenadas e restaura

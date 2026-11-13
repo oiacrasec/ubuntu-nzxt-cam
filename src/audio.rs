@@ -22,12 +22,17 @@ const BASS_HZ: f32 = 150.0;
 const FLOOR_DB: f32 = -60.0;
 /// Queda por bloco depois de um pico, para o medidor não piscar.
 const RELEASE: f32 = 0.85;
+/// Fração do caminho até o volume atual que o nível suavizado anda a cada bloco.
+/// Na captura do CAM, Sincronização muda no máximo 2 passos por quadro; Nivelado, 4.
+const SMOOTHING: f32 = 0.15;
 /// Sem blocos novos por este tempo, o som é tratado como silêncio.
 const STALE: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Levels {
     pub level: f32,
+    /// Volume que segue `level` devagar (modo Sincronização).
+    pub smooth: f32,
     pub bass: f32,
 }
 
@@ -63,8 +68,10 @@ impl Analyzer {
         let n = samples.len() as f32;
         let level = loudness((all / n).sqrt());
         let bass = loudness((low / n).sqrt());
+        let level = level.max(self.levels.level * RELEASE);
         self.levels = Levels {
-            level: level.max(self.levels.level * RELEASE),
+            level,
+            smooth: self.levels.smooth + (level - self.levels.smooth) * SMOOTHING,
             bass: bass.max(self.levels.bass * RELEASE),
         };
         self.levels
@@ -233,6 +240,18 @@ mod tests {
         assert!(low.bass > 0.8, "{low:?}");
         assert!(high.bass < low.bass - 0.3, "{high:?}");
         assert!((low.level - high.level).abs() < 0.05);
+    }
+
+    #[test]
+    fn smooth_level_follows_slowly() {
+        let mut analyzer = Analyzer::default();
+        let first = analyzer.push(&tone(1000.0, 30000.0));
+        assert!((first.smooth - first.level * SMOOTHING).abs() < 1e-6);
+        for _ in 0..60 {
+            analyzer.push(&tone(1000.0, 30000.0));
+        }
+        let settled = analyzer.levels;
+        assert!((settled.smooth - settled.level).abs() < 0.01, "{settled:?}");
     }
 
     #[test]

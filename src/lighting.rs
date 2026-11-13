@@ -378,45 +378,52 @@ impl ChannelLighting {
         })
     }
 
-    /// Quadro de um modo de áudio: cor fixa por LED calculada a partir do volume
-    /// (`level`) e da energia dos graves (`bass`), ambos de 0 a 1. O CAM não publica
-    /// o algoritmo; este é o comportamento próprio do porte:
-    /// - Nivelado: medidor que acende os LEDs em ordem, cada trecho com sua cor;
-    /// - Sincronização: todos os LEDs na cor da faixa de volume, com intensidade dele;
-    /// - Graves: a cor única pulsa com os graves;
-    /// - Ganho: as cores ficam distribuídas pela fita e a intensidade segue o volume.
-    pub fn audio_frame(&self, level: f32, bass: f32, leds: usize) -> ChannelLighting {
+    /// Quadro de um modo de áudio: cor fixa por LED. Conforme a captura USB do CAM
+    /// 4.76.9 (13/11/2026), cerca de 20 quadros por segundo, cores sem brilho reduzido:
+    /// - Nivelado: medidor com um passo por cor da lista; o passo *i* acende com a
+    ///   cor *i*. No Logótipo (1 LED), a cor do último passo aceso;
+    /// - Sincronização: o mesmo medidor sobre o volume suavizado;
+    /// - Graves: todos os LEDs com a primeira cor multiplicada pelos graves.
+    ///
+    /// Ganho só existe na Fita, onde o CAM não envia quadros de áudio; o porte
+    /// distribui as cores pela fita e faz a intensidade seguir o volume.
+    pub fn audio_frame(&self, levels: crate::audio::Levels, leds: usize) -> ChannelLighting {
         let leds = leds.max(1);
-        let level = level.clamp(0.0, 1.0);
         let palette = if self.colors.is_empty() {
             self.mode.default_colors()
         } else {
             self.colors.clone()
         };
-        let pick = |position: f32| {
-            let index = (position * palette.len() as f32) as usize;
-            palette
-                .get(index.min(palette.len().saturating_sub(1)))
-                .copied()
-                .unwrap_or_default()
-        };
+        let steps = palette.len().max(1);
+        let color = |index: usize| palette.get(index).copied().unwrap_or_default();
         let dim = |color: Rgb, factor: f32| {
             let s = |c: u8| (f32::from(c) * factor.clamp(0.0, 1.0)).round() as u8;
             Rgb(s(color.0), s(color.1), s(color.2))
         };
-        let lit = (level * leds as f32).ceil() as usize;
-        let led_colors = (0..leds)
-            .map(|i| {
-                let position = i as f32 / leds as f32;
-                match self.mode {
-                    Mode::AudioLevel if i < lit => pick(position),
-                    Mode::AudioLevel => Rgb::default(),
-                    Mode::AudioSync => dim(pick(level), level),
-                    Mode::AudioBass => dim(pick(0.0), bass),
-                    _ => dim(pick(position), level),
-                }
-            })
-            .collect();
+        let meter = |level: f32| -> Vec<Rgb> {
+            let lit = ((level.clamp(0.0, 1.0) * steps as f32).round() as usize).min(steps);
+            if leds == 1 {
+                return vec![lit.checked_sub(1).map(color).unwrap_or_default()];
+            }
+            let lit_leds = lit * leds / steps;
+            (0..leds)
+                .map(|i| {
+                    if i < lit_leds {
+                        color(i * steps / leds)
+                    } else {
+                        Rgb::default()
+                    }
+                })
+                .collect()
+        };
+        let led_colors = match self.mode {
+            Mode::AudioLevel => meter(levels.level),
+            Mode::AudioSync => meter(levels.smooth),
+            Mode::AudioBass => vec![dim(color(0), levels.bass); leds],
+            _ => (0..leds)
+                .map(|i| dim(color(i * steps / leds), levels.level))
+                .collect(),
+        };
         ChannelLighting {
             mode: Mode::Fixed,
             colors: vec![Rgb::default()],
@@ -462,51 +469,74 @@ mod tests {
         assert!(lighting.validate(&caps()).is_err());
     }
 
+    fn levels(level: f32, smooth: f32, bass: f32) -> crate::audio::Levels {
+        crate::audio::Levels {
+            level,
+            smooth,
+            bass,
+        }
+    }
+
     #[test]
-    fn audio_frames_follow_level_and_bass() {
+    fn audio_frames_match_the_cam_capture() {
+        let black = Rgb(0, 0, 0);
         let level = ChannelLighting {
             mode: Mode::AudioLevel,
             colors: Mode::AudioLevel.default_colors(),
             brightness: 30,
             ..Default::default()
         };
-        // Metade do volume acende 4 dos 8 LEDs do anel, cada um com a cor do seu trecho.
-        let frame = level.audio_frame(0.5, 0.0, 8);
+        // Anel: medidor `1 2 3 4 5 6 . .` como no CAM, cores sem brilho reduzido.
+        let frame = level.audio_frame(levels(0.75, 0.0, 0.0), 8);
         assert_eq!(frame.mode, Mode::Fixed);
         assert!(frame.per_led);
         assert_eq!(frame.brightness, 100);
-        assert_eq!(&frame.led_colors[..4], &level.colors[..4]);
-        assert!(frame.led_colors[4..].iter().all(|c| *c == Rgb(0, 0, 0)));
-        assert!(
-            level
-                .audio_frame(0.0, 1.0, 8)
-                .led_colors
-                .iter()
-                .all(|c| *c == Rgb(0, 0, 0))
+        assert_eq!(&frame.led_colors[..6], &level.colors[..6]);
+        assert_eq!(&frame.led_colors[6..], &[black, black]);
+        let silence = level.audio_frame(levels(0.0, 0.0, 1.0), 8);
+        assert!(silence.led_colors.iter().all(|c| *c == black));
+        // Logótipo: a cor do último passo aceso (5 de 8 = azul).
+        assert_eq!(
+            level.audio_frame(levels(0.6, 0.0, 0.0), 1).led_colors,
+            vec![Rgb(0x00, 0x00, 0xff)]
         );
+        assert_eq!(
+            level.audio_frame(levels(0.0, 0.0, 0.0), 1).led_colors,
+            vec![black]
+        );
+        // Sincronização usa o volume suavizado no mesmo medidor.
+        let sync = ChannelLighting {
+            mode: Mode::AudioSync,
+            colors: Mode::AudioSync.default_colors(),
+            ..Default::default()
+        };
+        let frame = sync.audio_frame(levels(1.0, 0.25, 0.0), 8);
+        assert_eq!(&frame.led_colors[..2], &sync.colors[..2]);
+        assert!(frame.led_colors[2..].iter().all(|c| *c == black));
+        // Fita: 40 LEDs, cinco por passo.
+        let strip = level.audio_frame(levels(0.5, 0.0, 0.0), 40);
+        assert_eq!(strip.led_colors[4], level.colors[0]);
+        assert_eq!(strip.led_colors[19], level.colors[3]);
+        assert_eq!(strip.led_colors[20], black);
         let bass = ChannelLighting {
             mode: Mode::AudioBass,
             colors: vec![Rgb(200, 100, 50)],
             ..Default::default()
         };
         assert_eq!(
-            bass.audio_frame(1.0, 0.5, 1).led_colors,
-            vec![Rgb(100, 50, 25)]
+            bass.audio_frame(levels(1.0, 1.0, 0.5), 8).led_colors,
+            vec![Rgb(100, 50, 25); 8]
         );
-        assert_eq!(bass.audio_frame(1.0, 0.0, 1).led_colors, vec![Rgb(0, 0, 0)]);
-        let sync = ChannelLighting {
-            mode: Mode::AudioSync,
-            colors: Mode::AudioSync.default_colors(),
-            ..Default::default()
-        };
-        let loud = sync.audio_frame(1.0, 0.0, 40);
-        assert!(loud.led_colors.iter().all(|c| *c == sync.colors[7]));
+        assert_eq!(
+            bass.audio_frame(levels(1.0, 1.0, 0.0), 1).led_colors,
+            vec![black]
+        );
         let gain = ChannelLighting {
             mode: Mode::AudioGain,
             colors: Mode::AudioGain.default_colors(),
             ..Default::default()
         };
-        let full = gain.audio_frame(1.0, 0.0, 40);
+        let full = gain.audio_frame(levels(1.0, 0.0, 0.0), 40);
         assert_eq!(full.led_colors[0], gain.colors[0]);
         assert_eq!(full.led_colors[39], gain.colors[7]);
     }

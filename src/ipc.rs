@@ -147,7 +147,8 @@ fn run(
     wake: Wake,
 ) {
     loop {
-        match rx.recv_timeout(Duration::from_millis(100)) {
+        // 50 ms: o ritmo dos quadros dos modos de áudio, como no CAM.
+        match rx.recv_timeout(Duration::from_millis(50)) {
             Ok(request) => {
                 engine.handle(request);
                 wake_gui(&wake);
