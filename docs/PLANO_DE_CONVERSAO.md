@@ -58,6 +58,15 @@ ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 
 ## Próximos passos, na ordem
 
+0. **Gráfico de Resfriando no estilo do CAM** (pedido em 13/11/2026, captura do
+   usuário): fundo `(18,18,20)` sem moldura; só linhas horizontais suaves em 0, 25,
+   50, 75 e 100%; eixo de 10° a 100° de 10 em 10; linha e pontos verdes
+   `(33,211,115)`; linha vertical tracejada na temperatura atual com rótulo
+   "Líquido: 35°" acima; seletor "Fonte de temperatura" centralizado acima do
+   gráfico, dentro do detalhe do canal. Função: `curve_editor` em `src/gui.rs`;
+   `cooling_detail` recebe a fonte. Manter pisos e 100% na temperatura crítica,
+   mesmo sem as linhas laranja de hoje.
+
 1. **Concluído na continuação:** observar "Personalizar cores LED" ligado no
    Anel e "Temperatura do CPU" no Logótipo, com autorização explícita do usuário.
    Restauração confirmada na interface: Logótipo e Anel em Fixo `#51007A`,

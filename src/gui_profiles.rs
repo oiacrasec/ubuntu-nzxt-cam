@@ -30,6 +30,10 @@ pub(super) enum ProfileDialog {
     },
 }
 
+/// Altura fixa das colunas do diálogo de programas: o diálogo nunca passa da janela.
+const PROGRAM_LIST_HEIGHT: f32 = 320.0;
+const DIALOG_BUTTON: Vec2 = Vec2::new(120.0, 40.0);
+
 pub(super) fn selection(state: &Snapshot) -> Option<(String, String, String)> {
     let name = state.config.profiles.active.as_ref()?;
     let profile = state.config.profiles.sync.get(name)?;
@@ -40,22 +44,23 @@ pub(super) fn selection(state: &Snapshot) -> Option<(String, String, String)> {
     ))
 }
 
-fn condition_label(condition: &AutoLaunch) -> &'static str {
-    match condition {
-        AutoLaunch::None => "No Auto Launch",
-        AutoLaunch::Program { .. } => "With Program",
-        AutoLaunch::Schedule { .. } => "At Specific Time",
-    }
+fn condition_label(condition: &AutoLaunch) -> String {
+    t(match condition {
+        AutoLaunch::None => "Sem ativação automática",
+        AutoLaunch::Program { .. } => "Com programa",
+        AutoLaunch::Schedule { .. } => "Em horário específico",
+    })
 }
 
-fn purple_button(ui: &mut egui::Ui, text: &str, enabled: bool) -> bool {
-    ui.add_enabled(
-        enabled,
-        egui::Button::new(text)
-            .fill(PURPLE)
-            .min_size(Vec2::new(100.0, 32.0)),
-    )
-    .clicked()
+/// Botão de diálogo de tamanho único; `primary` usa o roxo do tema.
+fn dialog_button(ui: &mut egui::Ui, text: &str, primary: bool, enabled: bool) -> bool {
+    let mut button = egui::Button::new(RichText::new(text).size(15.0));
+    if primary {
+        button = button.fill(PURPLE);
+    }
+    ui.add_enabled_ui(enabled, |ui| ui.add_sized(DIALOG_BUTTON, button))
+        .inner
+        .clicked()
 }
 
 fn name_field(ui: &mut egui::Ui, label: &str, value: &mut String) {
@@ -101,6 +106,25 @@ fn destination_link(ui: &mut egui::Ui, label: &str) -> bool {
             || arrow
     })
     .inner
+}
+
+/// Quadro com título, usado nas seções dos diálogos.
+fn section<R>(
+    ui: &mut egui::Ui,
+    title: &str,
+    stroke: Color32,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    egui::Frame::new()
+        .stroke(Stroke::new(1.0, stroke))
+        .inner_margin(16)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(title).strong());
+            ui.add_space(14.0);
+            add(ui)
+        })
+        .inner
 }
 
 impl App {
@@ -168,7 +192,7 @@ impl App {
                     }
                 }
                 ui.separator();
-                if ui.button(t("+ Add Profile")).clicked() {
+                if ui.button(t("+ Adicionar perfil")).clicked() {
                     self.profile_dialog = Some(ProfileDialog::Name {
                         existing: None,
                         name: String::new(),
@@ -176,14 +200,14 @@ impl App {
                     ui.close();
                 }
             });
-            if active != "Default" && self.icon_button(ui, Icon::Gear, "Edit Profile Sync") {
+            if active != "Default" && self.icon_button(ui, Icon::Gear, &t("Editar Profile Sync")) {
                 self.profile_dialog = Some(ProfileDialog::Name {
                     existing: Some(active.into()),
                     name: active.into(),
                 });
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.link("What is Profile Sync?").clicked() {
+                if ui.link(t("O que é o Profile Sync?")).clicked() {
                     self.profile_dialog = Some(ProfileDialog::Help);
                 }
             });
@@ -193,39 +217,28 @@ impl App {
             ui.add_enabled_ui(active != "Default", |ui| {
                 ui.horizontal(|ui| {
                     ui.set_min_height(40.0);
-                    ui.label(RichText::new("Auto Launch").size(20.0));
+                    ui.label(RichText::new(t("Ativação automática")).size(20.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        dropdown(
-                            ui,
-                            "auto-launch",
-                            condition_label(&profile.auto_launch),
-                            240.0,
-                            |ui| {
-                                for label in ["No Auto Launch", "With Program", "At Specific Time"]
-                                {
-                                    if ui
-                                        .selectable_label(
-                                            condition_label(&profile.auto_launch) == label,
-                                            label,
-                                        )
-                                        .clicked()
-                                    {
-                                        match label {
-                                            "No Auto Launch" => self.change_condition(
-                                                state,
-                                                active,
-                                                AutoLaunch::None,
-                                            ),
-                                            "With Program" => {
-                                                self.condition_dialog(state, active, true)
-                                            }
-                                            _ => self.condition_dialog(state, active, false),
-                                        }
-                                        ui.close();
+                        let current = condition_label(&profile.auto_launch);
+                        dropdown(ui, "auto-launch", &current, 240.0, |ui| {
+                            for (index, label) in [
+                                t("Sem ativação automática"),
+                                t("Com programa"),
+                                t("Em horário específico"),
+                            ]
+                            .into_iter()
+                            .enumerate()
+                            {
+                                if ui.selectable_label(current == label, &label).clicked() {
+                                    match index {
+                                        0 => self.change_condition(state, active, AutoLaunch::None),
+                                        1 => self.condition_dialog(state, active, true),
+                                        _ => self.condition_dialog(state, active, false),
                                     }
+                                    ui.close();
                                 }
-                            },
-                        );
+                            }
+                        });
                         if profile.auto_launch != AutoLaunch::None
                             && self.icon_button(ui, Icon::Gear, &t("Editar ativação automática"))
                         {
@@ -239,16 +252,18 @@ impl App {
                 });
                 if active == "Default" {
                     ui.label(
-                        RichText::new("Auto Launch is not available for the Default profile.")
-                            .size(13.0)
-                            .color(SECONDARY),
+                        RichText::new(t(
+                            "A ativação automática não está disponível para o perfil Default.",
+                        ))
+                        .size(13.0)
+                        .color(SECONDARY),
                     );
                 }
             });
         });
         ui.add_space(16.0);
         card(ui, |ui| {
-            ui.label(RichText::new("Selected Profiles").size(15.0).strong());
+            ui.label(RichText::new(t("Perfis selecionados")).size(15.0).strong());
             ui.add_space(12.0);
             for lighting in [true, false] {
                 let label = t(if lighting {
@@ -341,7 +356,7 @@ impl App {
             profiles.cooling.keys().collect()
         };
         dropdown(ui, ("device-profiles", lighting), selected, 240.0, |ui| {
-            if ui.button("Add Profile").clicked() {
+            if ui.button(t("Adicionar perfil")).clicked() {
                 self.profile_dialog = Some(ProfileDialog::Device {
                     lighting,
                     name: String::new(),
@@ -373,122 +388,247 @@ impl App {
             return;
         };
         let mut close = false;
-        let width = match dialog {
-            ProfileDialog::Programs { .. } => 712.0_f32,
+        let preferred: f32 = match dialog {
+            ProfileDialog::Programs { .. } => 760.0,
             ProfileDialog::Time { .. } => 728.0,
             _ => 536.0,
-        }
-        .min((ctx.content_rect().width() - 72.0).max(240.0));
+        };
+        let width = preferred.min((ctx.content_rect().width() - 72.0).max(240.0));
         let response = egui::Modal::new(egui::Id::new("profile-dialog"))
             .backdrop_color(Color32::from_black_alpha(200))
-            .frame(egui::Frame::new().fill(DARKEST).stroke(Stroke::new(1.0, BORDER)).inner_margin(32))
+            .frame(
+                egui::Frame::new()
+                    .fill(DARKEST)
+                    .stroke(Stroke::new(1.0, BORDER))
+                    .inner_margin(32),
+            )
             .show(ctx, |ui| {
                 ui.set_width(width);
-                let heading = match &dialog {
-                    ProfileDialog::Help => "What is Profile Sync?",
-                    ProfileDialog::Name { existing: Some(_), .. } => "Edit Profile Sync",
-                    ProfileDialog::Name { .. } => "Add Profile Sync",
-                    ProfileDialog::Programs { .. } => "Auto-Launch Programs",
-                    ProfileDialog::Time { .. } => "Configure Custom Launch Time",
-                    ProfileDialog::Device { .. } => "Add Profile",
-                };
+                let heading = t(match &dialog {
+                    ProfileDialog::Help => "O que é o Profile Sync?",
+                    ProfileDialog::Name { existing: Some(_), .. } => "Editar Profile Sync",
+                    ProfileDialog::Name { .. } => "Adicionar Profile Sync",
+                    ProfileDialog::Programs { .. } => "Programas da ativação automática",
+                    ProfileDialog::Time { .. } => "Configurar horário de ativação",
+                    ProfileDialog::Device { .. } => "Adicionar perfil",
+                });
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(heading).size(24.0));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if ui.button("×").clicked() { close = true; } });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add_sized([32.0, 32.0], egui::Button::new("×")).clicked() {
+                            close = true;
+                        }
+                    });
                 });
                 ui.add_space(24.0);
                 match &mut dialog {
                     ProfileDialog::Help => {
                         ui.label(t("Profile Sync combina perfis de iluminação e refrigeração. Selecione um perfil na barra superior ou configure sua ativação por programa ou horário."));
                         ui.add_space(24.0);
-                        close |= purple_button(ui, "OK", true);
+                        close |= dialog_button(ui, "OK", true, true);
                     }
                     ProfileDialog::Name { existing, name } => {
                         name_field(ui, &t("Nome"), name);
-                        ui.add_space(48.0);
-                        let valid = !name.trim().is_empty() && (existing.as_ref() == Some(name) || !state.config.profiles.sync.contains_key(name.trim()));
+                        ui.add_space(40.0);
+                        let valid = !name.trim().is_empty()
+                            && (existing.as_ref() == Some(name)
+                                || !state.config.profiles.sync.contains_key(name.trim()));
                         ui.horizontal(|ui| {
-                            ui.add_space((ui.available_width() - 416.0).max(0.0) / 2.0);
-                            if ui.add_sized([200.0, 48.0], egui::Button::new(t(if existing.is_some() { "Excluir" } else { "Cancelar" }))).clicked() {
-                                if let Some(existing) = existing { self.dispatch(Request::EditProfile { edit: Edit::Delete { name: existing.clone() } }); }
+                            let secondary = t(if existing.is_some() { "Excluir" } else { "Cancelar" });
+                            if dialog_button(ui, &secondary, false, true) {
+                                if let Some(existing) = existing {
+                                    self.dispatch(Request::EditProfile {
+                                        edit: Edit::Delete { name: existing.clone() },
+                                    });
+                                }
                                 close = true;
                             }
-                            if ui.add_enabled(valid, egui::Button::new(t("Salvar")).fill(PURPLE).min_size(Vec2::new(200.0, 48.0))).clicked() {
-                                if let Some(existing) = existing { self.dispatch(Request::EditProfile { edit: Edit::Rename { name: existing.clone(), new_name: name.trim().into() } }); }
-                                else { self.dispatch(Request::SaveProfileAndActivate { name: name.trim().into(), profile: SyncProfile::default() }); }
+                            if dialog_button(ui, &t("Salvar"), true, valid) {
+                                if let Some(existing) = existing {
+                                    self.dispatch(Request::EditProfile {
+                                        edit: Edit::Rename {
+                                            name: existing.clone(),
+                                            new_name: name.trim().into(),
+                                        },
+                                    });
+                                } else {
+                                    self.dispatch(Request::SaveProfileAndActivate {
+                                        name: name.trim().into(),
+                                        profile: SyncProfile::default(),
+                                    });
+                                }
                                 close = true;
                             }
                         });
                     }
-                    ProfileDialog::Programs { profile, connected, search, browsing, directory } => {
+                    ProfileDialog::Programs {
+                        profile,
+                        connected,
+                        search,
+                        browsing,
+                        directory,
+                    } => {
                         self.program_dialog_content(ui, state, connected, search, browsing, directory);
                         ui.add_space(20.0);
                         ui.separator();
                         ui.add_space(12.0);
                         ui.horizontal(|ui| {
-                            if purple_button(ui, &t("Salvar"), true) { self.change_condition(state, profile, AutoLaunch::Program { executables: connected.clone() }); close = true; }
-                            if ui.add_sized([100.0, 32.0], egui::Button::new(t("Cancelar"))).clicked() { close = true; }
+                            if dialog_button(ui, &t("Salvar"), true, true) {
+                                self.change_condition(
+                                    state,
+                                    profile,
+                                    AutoLaunch::Program {
+                                        executables: connected.clone(),
+                                    },
+                                );
+                                close = true;
+                            }
+                            if dialog_button(ui, &t("Cancelar"), false, true) {
+                                close = true;
+                            }
                         });
                     }
-                    ProfileDialog::Time { profile, start, end, days, all_day } => {
+                    ProfileDialog::Time {
+                        profile,
+                        start,
+                        end,
+                        days,
+                        all_day,
+                    } => {
                         let valid = days.contains(&true);
-                        egui::Frame::new().stroke(Stroke::new(1.0, if valid { BORDER } else { Color32::RED })).inner_margin(16).show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.label(RichText::new("Day Settings").strong());
-                            ui.add_space(16.0);
-                            let labels = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-                            egui::Grid::new("schedule-days").num_columns(3).spacing([38.0, 16.0]).show(ui, |ui| {
-                                for (index, day) in days.iter_mut().enumerate() { ui.checkbox(day, t(labels[index])); if index % 3 == 2 { ui.end_row(); } }
-                            });
-                        });
-                        ui.add_space(16.0);
-                        egui::Frame::new().stroke(Stroke::new(1.0, BORDER)).inner_margin(16).show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.label(RichText::new("Time Settings").strong());
-                            ui.add_space(16.0);
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| { ui.label("Start Time"); time_input(ui, "start", start); });
-                                ui.add_space(12.0);
-                                ui.vertical(|ui| {
-                                    ui.horizontal(|ui| { ui.label("End Time"); if *end < *start || *all_day { ui.colored_label(ORCHID, "+1 Day"); } });
-                                    time_input(ui, "end", end);
+                        section(ui, &t("Dias"), if valid { BORDER } else { Color32::RED }, |ui| {
+                            let labels = [
+                                "Domingo",
+                                "Segunda-feira",
+                                "Terça-feira",
+                                "Quarta-feira",
+                                "Quinta-feira",
+                                "Sexta-feira",
+                                "Sábado",
+                            ];
+                            // Quatro colunas iguais ocupando a largura do quadro.
+                            let column = ui.available_width() / 4.0;
+                            for (row_index, names) in labels.chunks(4).enumerate() {
+                                ui.horizontal(|ui| {
+                                    for (offset, name) in names.iter().enumerate() {
+                                        let index = row_index * 4 + offset;
+                                        ui.allocate_ui(Vec2::new(column, 28.0), |ui| {
+                                            ui.set_width(column);
+                                            ui.checkbox(&mut days[index], t(name));
+                                        });
+                                    }
                                 });
-                                ui.add_space(12.0);
-                                if ui.checkbox(all_day, "All Day").changed() {
-                                    if *all_day { *start = 0; *end = 0; }
-                                    else { *start = state.local_time.map_or(0, |time| time.minute); *end = (*start + 60) % 1440; }
-                                }
-                            });
+                                ui.add_space(8.0);
+                            }
+                            if !valid {
+                                ui.colored_label(ORANGE, t("Selecione pelo menos um dia"));
+                            }
                         });
                         ui.add_space(16.0);
+                        section(ui, &t("Horário"), BORDER, |ui| {
+                            egui::Grid::new("schedule-time")
+                                .num_columns(3)
+                                .spacing([24.0, 8.0])
+                                .show(ui, |ui| {
+                                    ui.label(t("Início"));
+                                    ui.horizontal(|ui| {
+                                        ui.label(t("Fim"));
+                                        if *end < *start || *all_day {
+                                            ui.colored_label(ORCHID, t("+1 dia"));
+                                        }
+                                    });
+                                    ui.label("");
+                                    ui.end_row();
+                                    ui.add_enabled_ui(!*all_day, |ui| time_input(ui, "start", start));
+                                    ui.add_enabled_ui(!*all_day, |ui| time_input(ui, "end", end));
+                                    if ui.checkbox(all_day, t("Dia inteiro")).changed() {
+                                        if *all_day {
+                                            *start = 0;
+                                            *end = 0;
+                                        } else {
+                                            *start = state.local_time.map_or(0, |time| time.minute);
+                                            *end = (*start + 60) % 1440;
+                                        }
+                                    }
+                                    ui.end_row();
+                                });
+                        });
+                        ui.add_space(20.0);
                         ui.horizontal(|ui| {
-                            if purple_button(ui, &t("Salvar"), valid) { self.change_condition(state, profile, AutoLaunch::Schedule { start: *start, end: *end, days: *days }); close = true; }
-                            if ui.add_sized([100.0, 32.0], egui::Button::new(t("Cancelar"))).clicked() { close = true; }
+                            if dialog_button(ui, &t("Salvar"), true, valid) {
+                                self.change_condition(
+                                    state,
+                                    profile,
+                                    AutoLaunch::Schedule {
+                                        start: *start,
+                                        end: *end,
+                                        days: *days,
+                                    },
+                                );
+                                close = true;
+                            }
+                            if dialog_button(ui, &t("Cancelar"), false, true) {
+                                close = true;
+                            }
                         });
                     }
-                    ProfileDialog::Device { lighting, name, duplicate, source } => {
+                    ProfileDialog::Device {
+                        lighting,
+                        name,
+                        duplicate,
+                        source,
+                    } => {
                         name_field(ui, &t(if *lighting { "Nome do tema" } else { "Nome" }), name);
                         ui.add_space(24.0);
                         ui.separator();
                         ui.add_space(12.0);
-                        let choices = if *lighting { &state.config.profiles.lighting.keys().collect::<Vec<_>>() } else { &state.config.profiles.cooling.keys().collect::<Vec<_>>() };
+                        let choices: Vec<String> = if *lighting {
+                            state.config.profiles.lighting.keys().cloned().collect()
+                        } else {
+                            state.config.profiles.cooling.keys().cloned().collect()
+                        };
                         ui.horizontal(|ui| {
-                            ui.checkbox(duplicate, "Duplicate existing profile:");
-                            ui.add_enabled_ui(*duplicate, |ui| { dropdown(ui, "duplicate-profile", &source.clone(), 240.0, |ui| { for choice in choices { if ui.selectable_label(source == *choice, *choice).clicked() { *source = (*choice).clone(); ui.close(); } } }); });
+                            ui.checkbox(duplicate, t("Duplicar perfil existente:"));
+                            ui.add_enabled_ui(*duplicate, |ui| {
+                                dropdown(ui, "duplicate-profile", &source.clone(), 240.0, |ui| {
+                                    for choice in &choices {
+                                        if ui.selectable_label(source == choice, choice).clicked() {
+                                            *source = choice.clone();
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            });
                         });
-                        ui.add_space(36.0);
+                        ui.add_space(32.0);
                         ui.horizontal(|ui| {
-                            if ui.add_sized([200.0, 48.0], egui::Button::new(t("Cancelar"))).clicked() { close = true; }
-                            let valid = !name.trim().is_empty() && !choices.iter().any(|choice| choice.as_str() == name.trim());
-                            if purple_button(ui, &t("Salvar"), valid) {
+                            if dialog_button(ui, &t("Cancelar"), false, true) {
+                                close = true;
+                            }
+                            let valid = !name.trim().is_empty()
+                                && !choices.iter().any(|choice| choice.as_str() == name.trim());
+                            if dialog_button(ui, &t("Salvar"), true, valid) {
                                 let source = if *duplicate { source.clone() } else { "Padrão".into() };
                                 let name = name.trim().to_owned();
-                                self.dispatch(Request::EditProfile { edit: if *lighting { Edit::AddLighting { name: name.clone(), source } } else { Edit::AddCooling { name: name.clone(), source } } });
+                                self.dispatch(Request::EditProfile {
+                                    edit: if *lighting {
+                                        Edit::AddLighting { name: name.clone(), source }
+                                    } else {
+                                        Edit::AddCooling { name: name.clone(), source }
+                                    },
+                                });
                                 let active = state.config.profiles.active.as_deref().unwrap_or("Default");
                                 if let Some(profile) = state.config.profiles.sync.get(active) {
                                     let mut profile = profile.clone();
-                                    if *lighting { profile.lighting = name; } else { profile.cooling = name; }
-                                    self.dispatch(Request::SaveProfileAndActivate { name: active.into(), profile });
+                                    if *lighting {
+                                        profile.lighting = name;
+                                    } else {
+                                        profile.cooling = name;
+                                    }
+                                    self.dispatch(Request::SaveProfileAndActivate {
+                                        name: active.into(),
+                                        profile,
+                                    });
                                 }
                                 close = true;
                             }
@@ -510,18 +650,21 @@ impl App {
         browsing: &mut bool,
         directory: &mut String,
     ) {
-        let left = (ui.available_width() * 0.64).max(220.0);
+        let total = ui.available_width();
+        let left = (total * 0.62).max(220.0);
+        let right = (total - left - 25.0).max(140.0);
         ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
+            // Coluna esquerda: pesquisa ou navegação de pastas, altura fixa.
+            ui.allocate_ui(Vec2::new(left, PROGRAM_LIST_HEIGHT + 56.0), |ui| {
                 ui.set_width(left);
                 ui.horizontal(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(search)
-                            .hint_text("Search Programs")
-                            .desired_width((left - 174.0).max(80.0)),
+                            .hint_text(t("Pesquisar programas"))
+                            .desired_width((left - 170.0).max(80.0)),
                     );
                     if ui
-                        .add_sized([160.0, 36.0], egui::Button::new("Browse Programs"))
+                        .add_sized([160.0, 36.0], egui::Button::new(t("Procurar programas")))
                         .clicked()
                     {
                         *browsing = true;
@@ -530,18 +673,18 @@ impl App {
                         });
                     }
                 });
-                ui.add_space(16.0);
+                ui.add_space(12.0);
                 egui::ScrollArea::vertical()
                     .id_salt("program-results")
-                    .min_scrolled_height(300.0)
-                    .max_height(300.0)
+                    .max_height(PROGRAM_LIST_HEIGHT)
+                    .min_scrolled_height(PROGRAM_LIST_HEIGHT)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.set_min_height(300.0);
                         if *browsing {
                             ui.horizontal(|ui| {
                                 ui.add(
                                     egui::TextEdit::singleline(directory)
-                                        .desired_width((left - 90.0).max(80.0)),
+                                        .desired_width((left - 100.0).max(80.0)),
                                 );
                                 if ui.button(t("Abrir")).clicked() {
                                     self.dispatch(Request::BrowsePrograms {
@@ -584,16 +727,19 @@ impl App {
                                 *browsing = false;
                             }
                         } else if search.trim().is_empty() {
-                            ui.add_space(130.0);
+                            ui.add_space(PROGRAM_LIST_HEIGHT / 2.0 - 12.0);
                             ui.vertical_centered(|ui| {
-                                ui.label("Search for a game or program");
+                                ui.label(
+                                    RichText::new(t("Pesquise um jogo ou programa"))
+                                        .color(SECONDARY),
+                                );
                             });
                         } else {
-                            let search = search.to_lowercase();
+                            let needle = search.to_lowercase();
                             let mut found = false;
                             for program in state.programs.iter().filter(|p| {
-                                p.name.to_lowercase().contains(&search)
-                                    || p.executable.to_lowercase().contains(&search)
+                                p.name.to_lowercase().contains(&needle)
+                                    || p.executable.to_lowercase().contains(&needle)
                             }) {
                                 found = true;
                                 let selected = connected.contains(&program.executable);
@@ -603,25 +749,21 @@ impl App {
                                         1.0,
                                         if selected { ORCHID } else { BORDER },
                                     ))
-                                    .inner_margin(16)
+                                    .inner_margin(12)
                                     .show(ui, |ui| {
                                         ui.set_width(ui.available_width());
-                                        ui.set_min_height(56.0);
                                         ui.horizontal(|ui| {
-                                            ui.label(RichText::new(&program.name).size(19.0))
+                                            ui.label(RichText::new(&program.name).size(17.0))
                                                 .on_hover_text(&program.executable);
                                             ui.with_layout(
                                                 egui::Layout::right_to_left(egui::Align::Center),
                                                 |ui| {
-                                                    if purple_button(
-                                                        ui,
-                                                        &t(if selected {
-                                                            "Remover"
-                                                        } else {
-                                                            "Connect"
-                                                        }),
-                                                        true,
-                                                    ) {
+                                                    let text = t(if selected {
+                                                        "Remover"
+                                                    } else {
+                                                        "Conectar"
+                                                    });
+                                                    if dialog_button(ui, &text, !selected, true) {
                                                         if selected {
                                                             connected.retain(|exe| {
                                                                 exe != &program.executable
@@ -635,7 +777,7 @@ impl App {
                                             );
                                         });
                                     });
-                                ui.add_space(16.0);
+                                ui.add_space(8.0);
                             }
                             if !found {
                                 ui.label(t("Nenhum programa encontrado"));
@@ -643,40 +785,59 @@ impl App {
                         }
                     });
             });
-            ui.separator();
-            ui.vertical(|ui| {
-                ui.set_width((ui.available_width() - 12.0).max(100.0));
-                ui.label(RichText::new("Connected Programs").strong());
-                ui.add_space(16.0);
-                let mut remove = None;
-                for (index, executable) in connected.iter().enumerate() {
-                    let name = state
-                        .programs
-                        .iter()
-                        .find(|p| &p.executable == executable)
-                        .map(|p| p.name.as_str())
-                        .unwrap_or_else(|| executable.rsplit('/').next().unwrap_or(executable));
-                    egui::Frame::new()
-                        .fill(PURPLE)
-                        .inner_margin(12)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(name).on_hover_text(executable);
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui.button("×").clicked() {
-                                            remove = Some(index);
-                                        }
-                                    },
-                                );
-                            });
-                        });
-                    ui.add_space(8.0);
-                }
-                if let Some(index) = remove {
-                    connected.remove(index);
-                }
+            // Divisória com a mesma altura das colunas (não ocupa a janela inteira).
+            let (line, _) =
+                ui.allocate_exact_size(Vec2::new(25.0, PROGRAM_LIST_HEIGHT + 56.0), Sense::hover());
+            ui.painter().line_segment(
+                [line.center_top(), line.center_bottom()],
+                Stroke::new(1.0, BORDER),
+            );
+            ui.allocate_ui(Vec2::new(right, PROGRAM_LIST_HEIGHT + 56.0), |ui| {
+                ui.set_width(right);
+                ui.label(RichText::new(t("Programas conectados")).strong());
+                ui.add_space(12.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("connected-programs")
+                    .max_height(PROGRAM_LIST_HEIGHT)
+                    .show(ui, |ui| {
+                        let mut remove = None;
+                        for (index, executable) in connected.iter().enumerate() {
+                            let name = state
+                                .programs
+                                .iter()
+                                .find(|p| &p.executable == executable)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or_else(|| {
+                                    executable.rsplit('/').next().unwrap_or(executable)
+                                });
+                            egui::Frame::new()
+                                .fill(PURPLE)
+                                .inner_margin(10)
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal(|ui| {
+                                        ui.label(name).on_hover_text(executable);
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if ui.button("×").clicked() {
+                                                    remove = Some(index);
+                                                }
+                                            },
+                                        );
+                                    });
+                                });
+                            ui.add_space(8.0);
+                        }
+                        if let Some(index) = remove {
+                            connected.remove(index);
+                        }
+                        if connected.is_empty() {
+                            ui.label(
+                                RichText::new(t("Nenhum programa conectado")).color(SECONDARY),
+                            );
+                        }
+                    });
             });
         });
     }
