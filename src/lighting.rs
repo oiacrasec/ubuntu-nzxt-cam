@@ -23,14 +23,28 @@ pub enum Mode {
     RainbowPulse,
     StarryNight,
     Candle,
+    /// Onda personalizada: uma cor por LED, em movimento (só na Fita).
+    Wave,
     /// Cor calculada pelo aplicativo a partir da temperatura (não existe no firmware).
     CpuTemperature,
     GpuTemperature,
+    /// Modos de áudio: quadros calculados pelo aplicativo a partir do som do sistema.
+    AudioLevel,
+    AudioSync,
+    AudioBass,
+    AudioGain,
 }
 
 impl Mode {
     pub fn is_temperature(self) -> bool {
         matches!(self, Self::CpuTemperature | Self::GpuTemperature)
+    }
+
+    pub fn is_audio(self) -> bool {
+        matches!(
+            self,
+            Self::AudioLevel | Self::AudioSync | Self::AudioBass | Self::AudioGain
+        )
     }
 
     pub fn label(self) -> &'static str {
@@ -53,8 +67,47 @@ impl Mode {
             Self::RainbowPulse => "Rainbow Pulse",
             Self::StarryNight => "Starry Night",
             Self::Candle => "Candle",
+            Self::Wave => "Wave",
             Self::CpuTemperature => "CPU Temperature",
             Self::GpuTemperature => "GPU Temperature",
+            Self::AudioLevel => "Level",
+            Self::AudioSync => "Sync",
+            Self::AudioBass => "Bass",
+            Self::AudioGain => "Gain",
+        }
+    }
+
+    /// Cores que o CAM 4.76.8 põe ao escolher o modo (observadas no `renderer.log`).
+    #[cfg_attr(not(feature = "gui"), allow(dead_code))]
+    pub fn default_colors(self) -> Vec<Rgb> {
+        const PURPLE: Rgb = Rgb(0x51, 0x00, 0x7a);
+        const RED: Rgb = Rgb(0xff, 0x00, 0x00);
+        const GREEN: Rgb = Rgb(0x00, 0xff, 0x00);
+        const BLUE: Rgb = Rgb(0x00, 0x00, 0xff);
+        const ORANGE: Rgb = Rgb(0xff, 0xa5, 0x00);
+        match self {
+            Self::Fading => vec![PURPLE, GREEN, BLUE],
+            Self::CoveringMarquee => vec![BLUE, GREEN],
+            Self::Alternating | Self::TaiChi => vec![RED, BLUE],
+            Self::Wings => vec![BLUE],
+            Self::Candle => vec![ORANGE],
+            Self::AudioLevel | Self::AudioSync | Self::AudioGain => vec![
+                RED,
+                ORANGE,
+                Rgb(0xff, 0xff, 0x00),
+                GREEN,
+                BLUE,
+                PURPLE,
+                RED,
+                ORANGE,
+            ],
+            Self::SpectrumWave
+            | Self::WaterCooler
+            | Self::Wave
+            | Self::CpuTemperature
+            | Self::GpuTemperature
+            | Self::Off => Vec::new(),
+            _ => vec![PURPLE],
         }
     }
 }
@@ -172,7 +225,9 @@ impl Default for ChannelLighting {
     }
 }
 
-/// O que um canal físico aceita, declarado pelo driver do dispositivo.
+/// O que um canal físico aceita, declarado pelo driver do dispositivo. Cada opção
+/// corresponde a um controle do painel do CAM (velocidade, direção, tamanho do LED,
+/// movimento, cores por LED e brilho).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Capability {
     pub mode: Mode,
@@ -182,6 +237,72 @@ pub struct Capability {
     pub direction: bool,
     #[serde(default)]
     pub per_led: bool,
+    #[serde(default)]
+    pub led_size: bool,
+    #[serde(default)]
+    pub moving: bool,
+    /// O CAM desativa o brilho em modos de arco-íris, temperatura e áudio.
+    #[serde(default)]
+    pub brightness: bool,
+}
+
+impl Capability {
+    /// Modo sem opções além das cores e do brilho.
+    pub fn new(mode: Mode, min_colors: usize, max_colors: usize) -> Self {
+        Self {
+            mode,
+            min_colors,
+            max_colors,
+            speed: false,
+            direction: false,
+            per_led: false,
+            led_size: false,
+            moving: false,
+            brightness: true,
+        }
+    }
+
+    pub fn speed(self) -> Self {
+        Self {
+            speed: true,
+            ..self
+        }
+    }
+
+    pub fn direction(self) -> Self {
+        Self {
+            direction: true,
+            ..self
+        }
+    }
+
+    pub fn per_led(self) -> Self {
+        Self {
+            per_led: true,
+            ..self
+        }
+    }
+
+    pub fn led_size(self) -> Self {
+        Self {
+            led_size: true,
+            ..self
+        }
+    }
+
+    pub fn moving(self) -> Self {
+        Self {
+            moving: true,
+            ..self
+        }
+    }
+
+    pub fn without_brightness(self) -> Self {
+        Self {
+            brightness: false,
+            ..self
+        }
+    }
 }
 
 impl ChannelLighting {
@@ -230,13 +351,17 @@ impl ChannelLighting {
         if self.backwards && !capability.direction {
             bail!("O modo {} não tem direção", self.mode.label());
         }
+        if self.moving && !capability.moving {
+            bail!("O modo {} não tem movimento", self.mode.label());
+        }
         Ok(())
     }
 }
 
 impl ChannelLighting {
     /// Iluminação a enviar ao dispositivo. Modos por temperatura viram cor fixa da
-    /// faixa atual; sem leitura do sensor, `None` mantém a cor já enviada.
+    /// faixa atual, com brilho total como no CAM, que desativa o brilho nesses modos;
+    /// sem leitura do sensor, `None` mantém a cor já enviada.
     pub fn resolved(&self, cpu: Option<f64>, gpu: Option<f64>) -> Option<ChannelLighting> {
         let temperature = match self.mode {
             Mode::CpuTemperature => cpu?,
@@ -248,8 +373,58 @@ impl ChannelLighting {
             mode: Mode::Fixed,
             colors: vec![color],
             per_led: false,
+            brightness: 100,
             ..self.clone()
         })
+    }
+
+    /// Quadro de um modo de áudio: cor fixa por LED calculada a partir do volume
+    /// (`level`) e da energia dos graves (`bass`), ambos de 0 a 1. O CAM não publica
+    /// o algoritmo; este é o comportamento próprio do porte:
+    /// - Nivelado: medidor que acende os LEDs em ordem, cada trecho com sua cor;
+    /// - Sincronização: todos os LEDs na cor da faixa de volume, com intensidade dele;
+    /// - Graves: a cor única pulsa com os graves;
+    /// - Ganho: as cores ficam distribuídas pela fita e a intensidade segue o volume.
+    pub fn audio_frame(&self, level: f32, bass: f32, leds: usize) -> ChannelLighting {
+        let leds = leds.max(1);
+        let level = level.clamp(0.0, 1.0);
+        let palette = if self.colors.is_empty() {
+            self.mode.default_colors()
+        } else {
+            self.colors.clone()
+        };
+        let pick = |position: f32| {
+            let index = (position * palette.len() as f32) as usize;
+            palette
+                .get(index.min(palette.len().saturating_sub(1)))
+                .copied()
+                .unwrap_or_default()
+        };
+        let dim = |color: Rgb, factor: f32| {
+            let s = |c: u8| (f32::from(c) * factor.clamp(0.0, 1.0)).round() as u8;
+            Rgb(s(color.0), s(color.1), s(color.2))
+        };
+        let lit = (level * leds as f32).ceil() as usize;
+        let led_colors = (0..leds)
+            .map(|i| {
+                let position = i as f32 / leds as f32;
+                match self.mode {
+                    Mode::AudioLevel if i < lit => pick(position),
+                    Mode::AudioLevel => Rgb::default(),
+                    Mode::AudioSync => dim(pick(level), level),
+                    Mode::AudioBass => dim(pick(0.0), bass),
+                    _ => dim(pick(position), level),
+                }
+            })
+            .collect();
+        ChannelLighting {
+            mode: Mode::Fixed,
+            colors: vec![Rgb::default()],
+            per_led: true,
+            led_colors,
+            brightness: 100,
+            ..self.clone()
+        }
     }
 }
 
@@ -259,31 +434,81 @@ mod tests {
 
     fn caps() -> Vec<Capability> {
         vec![
-            Capability {
-                mode: Mode::Fixed,
-                min_colors: 1,
-                max_colors: 1,
-                speed: false,
-                direction: false,
-                per_led: true,
-            },
-            Capability {
-                mode: Mode::Breathing,
-                min_colors: 1,
-                max_colors: 8,
-                speed: true,
-                direction: false,
-                per_led: false,
-            },
-            Capability {
-                mode: Mode::SpectrumWave,
-                min_colors: 0,
-                max_colors: 0,
-                speed: true,
-                direction: true,
-                per_led: false,
-            },
+            Capability::new(Mode::Fixed, 1, 1).per_led(),
+            Capability::new(Mode::Breathing, 1, 8).speed(),
+            Capability::new(Mode::SpectrumWave, 0, 0)
+                .speed()
+                .direction()
+                .without_brightness(),
+            Capability::new(Mode::Alternating, 2, 2)
+                .speed()
+                .direction()
+                .led_size()
+                .moving(),
         ]
+    }
+
+    #[test]
+    fn moving_only_where_the_mode_has_it() {
+        let mut lighting = ChannelLighting {
+            mode: Mode::Alternating,
+            colors: Mode::Alternating.default_colors(),
+            moving: true,
+            ..Default::default()
+        };
+        lighting.validate(&caps()).unwrap();
+        lighting.mode = Mode::Breathing;
+        lighting.colors = vec![Rgb(1, 2, 3)];
+        assert!(lighting.validate(&caps()).is_err());
+    }
+
+    #[test]
+    fn audio_frames_follow_level_and_bass() {
+        let level = ChannelLighting {
+            mode: Mode::AudioLevel,
+            colors: Mode::AudioLevel.default_colors(),
+            brightness: 30,
+            ..Default::default()
+        };
+        // Metade do volume acende 4 dos 8 LEDs do anel, cada um com a cor do seu trecho.
+        let frame = level.audio_frame(0.5, 0.0, 8);
+        assert_eq!(frame.mode, Mode::Fixed);
+        assert!(frame.per_led);
+        assert_eq!(frame.brightness, 100);
+        assert_eq!(&frame.led_colors[..4], &level.colors[..4]);
+        assert!(frame.led_colors[4..].iter().all(|c| *c == Rgb(0, 0, 0)));
+        assert!(
+            level
+                .audio_frame(0.0, 1.0, 8)
+                .led_colors
+                .iter()
+                .all(|c| *c == Rgb(0, 0, 0))
+        );
+        let bass = ChannelLighting {
+            mode: Mode::AudioBass,
+            colors: vec![Rgb(200, 100, 50)],
+            ..Default::default()
+        };
+        assert_eq!(
+            bass.audio_frame(1.0, 0.5, 1).led_colors,
+            vec![Rgb(100, 50, 25)]
+        );
+        assert_eq!(bass.audio_frame(1.0, 0.0, 1).led_colors, vec![Rgb(0, 0, 0)]);
+        let sync = ChannelLighting {
+            mode: Mode::AudioSync,
+            colors: Mode::AudioSync.default_colors(),
+            ..Default::default()
+        };
+        let loud = sync.audio_frame(1.0, 0.0, 40);
+        assert!(loud.led_colors.iter().all(|c| *c == sync.colors[7]));
+        let gain = ChannelLighting {
+            mode: Mode::AudioGain,
+            colors: Mode::AudioGain.default_colors(),
+            ..Default::default()
+        };
+        let full = gain.audio_frame(1.0, 0.0, 40);
+        assert_eq!(full.led_colors[0], gain.colors[0]);
+        assert_eq!(full.led_colors[39], gain.colors[7]);
     }
 
     #[test]
@@ -314,7 +539,7 @@ mod tests {
         let resolved = lighting.resolved(Some(77.0), None).unwrap();
         assert_eq!(resolved.mode, Mode::Fixed);
         assert_eq!(resolved.colors, vec![Rgb(0xff, 0xff, 0x00)]);
-        assert_eq!(resolved.brightness, 40);
+        assert_eq!(resolved.brightness, 100);
         assert!(lighting.resolved(None, Some(50.0)).is_none());
         let gpu = ChannelLighting {
             mode: Mode::GpuTemperature,
@@ -332,14 +557,7 @@ mod tests {
 
     #[test]
     fn validates_temperature_thresholds() {
-        let caps = vec![Capability {
-            mode: Mode::CpuTemperature,
-            min_colors: 0,
-            max_colors: 0,
-            speed: false,
-            direction: false,
-            per_led: false,
-        }];
+        let caps = vec![Capability::new(Mode::CpuTemperature, 0, 0).without_brightness()];
         let mut lighting = ChannelLighting {
             mode: Mode::CpuTemperature,
             colors: vec![],

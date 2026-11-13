@@ -39,7 +39,8 @@ de aplicar perfil, salvar ou ler sensores.
 | `protocol.rs` | Codificação e decodificação dos relatórios HID, sem E/S, testável com amostras | — |
 | `sensors.rs` | CPU (`coretemp`/`k10temp`, `/proc/stat`), GPU (NVML carregada sob demanda, `amdgpu`), RAM (`/proc/meminfo`), armazenamento (`nvme`/`drivetemp`), rede (`/proc/net/dev`) | `stream.rs` (fonte contínua) |
 | `curves.rs` | Perfis Silent/Performance/Fixed/Custom, interpolação, pisos e validação | `effects.rs` |
-| `lighting.rs` | Modos, cores, velocidade, direção e validação por dispositivo | `effects.rs` |
+| `lighting.rs` | Modos, cores, opções de cada modo, validação por dispositivo e quadros dos modos de áudio | `effects.rs` |
+| `audio.rs` | Captura do som do sistema (`parec` ou `pw-record`) e análise de volume e graves, ativa só com modo de áudio em uso | — |
 | `governor.rs` | Laço que lê sensores, calcula rotações e escreve nos dispositivos | worker de `ai.rs` |
 | `profiles.rs` | Perfis por dispositivo e Profile Sync (ativação por programa ou horário) | `resources.rs` |
 | `permissions.rs` | Plano revisável e helper restrito para a regra udev | `virtual_camera.rs` |

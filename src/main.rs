@@ -1,5 +1,6 @@
 // No Windows o binário só abre a prévia; o código de hardware fica sem uso ali.
 #![cfg_attr(not(unix), allow(dead_code, unused_imports))]
+mod audio;
 mod config;
 mod curves;
 mod desktop;

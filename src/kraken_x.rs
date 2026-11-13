@@ -62,17 +62,6 @@ pub(crate) fn latest<T>(
     Ok(found)
 }
 
-fn cap(mode: Mode, min: usize, max: usize, speed: bool, direction: bool) -> Capability {
-    Capability {
-        mode,
-        min_colors: min,
-        max_colors: max,
-        speed,
-        direction,
-        per_led: mode == Mode::Fixed,
-    }
-}
-
 impl KrakenX {
     pub fn new(info: Info, transport: Box<dyn Transport>) -> Self {
         Self {
@@ -137,31 +126,55 @@ impl Driver for KrakenX {
     }
 
     fn lighting_channels(&self) -> Vec<LightingChannel> {
-        // Listas e ordem dos menus do CAM 4.76.8 (Logótipo e Anel do Kraken X).
+        // Listas, ordem e opções dos menus do CAM 4.76.8 (Logótipo e Anel do Kraken X),
+        // conferidas no `renderer.log` ao escolher cada modo em 13/11/2026.
         let logo = vec![
-            cap(Mode::Fixed, 1, 1, false, false),
-            cap(Mode::Breathing, 1, 8, true, false),
-            cap(Mode::Fading, 2, 8, true, false),
-            cap(Mode::Pulse, 1, 8, true, false),
-            cap(Mode::SpectrumWave, 0, 0, true, true),
-            cap(Mode::CpuTemperature, 0, 0, false, false),
-            cap(Mode::GpuTemperature, 0, 0, false, false),
+            Capability::new(Mode::Fixed, 1, 1),
+            Capability::new(Mode::Breathing, 1, 8).speed(),
+            Capability::new(Mode::Fading, 2, 8).speed(),
+            Capability::new(Mode::Pulse, 1, 8).speed(),
+            Capability::new(Mode::SpectrumWave, 0, 0)
+                .speed()
+                .direction()
+                .without_brightness(),
+            Capability::new(Mode::CpuTemperature, 0, 0).without_brightness(),
+            Capability::new(Mode::GpuTemperature, 0, 0).without_brightness(),
+            Capability::new(Mode::AudioLevel, 1, 8).without_brightness(),
+            Capability::new(Mode::AudioSync, 1, 8).without_brightness(),
+            Capability::new(Mode::AudioBass, 1, 1).without_brightness(),
         ];
         let ring = vec![
-            cap(Mode::Fixed, 1, 1, false, false),
-            cap(Mode::Breathing, 1, 8, true, false),
-            cap(Mode::Fading, 2, 8, true, false),
-            cap(Mode::Marquee, 1, 1, true, true),
-            cap(Mode::CoveringMarquee, 1, 8, true, true),
-            cap(Mode::Pulse, 1, 8, true, false),
-            cap(Mode::SpectrumWave, 0, 0, true, true),
-            cap(Mode::Alternating, 2, 2, true, true),
-            cap(Mode::Wings, 1, 1, true, false),
-            cap(Mode::TaiChi, 2, 2, true, false),
-            cap(Mode::WaterCooler, 0, 0, true, false),
-            cap(Mode::Loading, 1, 1, true, false),
-            cap(Mode::CpuTemperature, 0, 0, false, false),
-            cap(Mode::GpuTemperature, 0, 0, false, false),
+            Capability::new(Mode::Fixed, 1, 1).per_led(),
+            Capability::new(Mode::Breathing, 1, 8).speed().per_led(),
+            Capability::new(Mode::Fading, 2, 8).speed(),
+            Capability::new(Mode::Marquee, 1, 1)
+                .speed()
+                .direction()
+                .led_size(),
+            Capability::new(Mode::CoveringMarquee, 1, 8)
+                .speed()
+                .direction(),
+            Capability::new(Mode::Pulse, 1, 8).speed(),
+            Capability::new(Mode::SpectrumWave, 0, 0)
+                .speed()
+                .direction()
+                .without_brightness(),
+            Capability::new(Mode::Alternating, 2, 2)
+                .speed()
+                .direction()
+                .led_size()
+                .moving(),
+            Capability::new(Mode::Wings, 1, 1).speed(),
+            Capability::new(Mode::TaiChi, 2, 2).speed(),
+            Capability::new(Mode::WaterCooler, 0, 0)
+                .speed()
+                .without_brightness(),
+            Capability::new(Mode::Loading, 1, 1),
+            Capability::new(Mode::CpuTemperature, 0, 0).without_brightness(),
+            Capability::new(Mode::GpuTemperature, 0, 0).without_brightness(),
+            Capability::new(Mode::AudioLevel, 1, 8).without_brightness(),
+            Capability::new(Mode::AudioSync, 1, 8).without_brightness(),
+            Capability::new(Mode::AudioBass, 1, 1).without_brightness(),
         ];
         vec![
             LightingChannel {
@@ -352,8 +365,36 @@ mod tests {
         let ring = &channels[1].capabilities;
         assert!(!logo.iter().any(|c| c.mode == Mode::Marquee));
         assert!(ring.iter().any(|c| c.mode == Mode::Marquee));
-        for capability in ring.iter().filter(|c| !c.mode.is_temperature()) {
+        // Temperatura e áudio chegam ao dispositivo como cor fixa calculada.
+        for capability in ring
+            .iter()
+            .chain(logo)
+            .filter(|c| !c.mode.is_temperature() && !c.mode.is_audio())
+        {
             assert!(protocol::kraken_mode(capability.mode).is_some());
         }
+    }
+
+    #[test]
+    fn ring_breathing_accepts_individual_leds() {
+        let mock = Mock::default();
+        let mut device = kraken(&mock);
+        let lighting = ChannelLighting {
+            mode: Mode::Breathing,
+            per_led: true,
+            led_colors: (0..8).map(|i| crate::lighting::Rgb(i, 20, 30)).collect(),
+            ..Default::default()
+        };
+        lighting
+            .validate(&device.lighting_channels()[1].capabilities)
+            .unwrap();
+        let before = mock.written().len();
+        device.set_lighting("ring", &lighting).unwrap();
+        let writes = &mock.written()[before..];
+        assert_eq!(writes.len(), 1);
+        assert_eq!(&writes[0][..4], &[0x02, 0x4c, 0x02, 0x06]);
+        // Logo em GRB, depois os 8 LEDs do anel com a cor de cada um.
+        assert_eq!(&writes[0][5..8], &[20, 0, 30]);
+        assert_eq!(&writes[0][8..14], &[0, 20, 30, 1, 20, 30]);
     }
 }

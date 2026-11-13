@@ -188,6 +188,9 @@ pub struct Engine {
     profile_stack: crate::profiles::ActivationStack,
     /// Última iluminação enviada por canal; evita reenviar a mesma cor a cada ciclo.
     lighting_sent: BTreeMap<String, ChannelLighting>,
+    /// Captura do som do sistema, ativa só enquanto algum canal usa modo de áudio.
+    audio: Option<crate::audio::Capture>,
+    audio_error_shown: bool,
     update_job: Option<crate::updater::Job>,
     installation: Option<crate::installation::Installed>,
 }
@@ -229,6 +232,8 @@ impl Engine {
             last_profile_check: None,
             profile_stack: Default::default(),
             lighting_sent: BTreeMap::new(),
+            audio: None,
+            audio_error_shown: false,
             update_job: None,
             installation: None,
         };
@@ -331,7 +336,7 @@ impl Engine {
             let key = channel_key(&info.id, &channel.name);
             if let Some(lighting) = self.state.config.lighting.get(&key)
                 && lighting.validate(&channel.capabilities).is_ok()
-                && let Some(resolved) = self.resolve_lighting(lighting)
+                && let Some(resolved) = self.resolve_lighting(lighting, channel.leds)
             {
                 match driver.set_lighting(&channel.name, &resolved) {
                     Ok(()) => {
@@ -398,8 +403,16 @@ impl Engine {
         self.refresh_temperature_lighting();
     }
 
-    /// Converte modos por temperatura em cor fixa com as leituras atuais.
-    fn resolve_lighting(&self, lighting: &ChannelLighting) -> Option<ChannelLighting> {
+    /// Converte modos por temperatura e de áudio em cor fixa com as leituras atuais.
+    fn resolve_lighting(&self, lighting: &ChannelLighting, leds: usize) -> Option<ChannelLighting> {
+        if lighting.mode.is_audio() {
+            let levels = self
+                .audio
+                .as_ref()
+                .map(|capture| capture.levels())
+                .unwrap_or_default();
+            return Some(lighting.audio_frame(levels.level, levels.bass, leds));
+        }
         let sensors = &self.state.sensors;
         lighting.resolved(
             sensors.cpu_temperature(self.state.config.ui.cpu_average_temperature),
@@ -407,15 +420,56 @@ impl Engine {
         )
     }
 
+    /// LEDs endereçáveis do canal `<dispositivo>/<canal>`.
+    fn channel_leds(&self, key: &str) -> usize {
+        key.rsplit_once('/')
+            .and_then(|(id, name)| {
+                let device = self.state.devices.iter().find(|d| d.info.id == id)?;
+                Some(device.lighting.iter().find(|c| c.name == name)?.leds)
+            })
+            .unwrap_or(1)
+    }
+
     /// Envia a cor da faixa atual aos canais em modo por temperatura, só quando muda.
     fn refresh_temperature_lighting(&mut self) {
+        self.refresh_dynamic_lighting(|mode| mode.is_temperature());
+    }
+
+    /// Mantém a captura de som só enquanto algum canal usa modo de áudio e envia
+    /// o quadro atual a esses canais quando ele muda.
+    fn refresh_audio_lighting(&mut self) {
+        let wanted = self
+            .state
+            .config
+            .lighting
+            .values()
+            .any(|lighting| lighting.mode.is_audio());
+        if !wanted {
+            self.audio = None;
+            self.audio_error_shown = false;
+            return;
+        }
+        let capture = self.audio.get_or_insert_with(crate::audio::Capture::start);
+        if let Some(error) = capture.error()
+            && !self.audio_error_shown
+        {
+            self.audio_error_shown = true;
+            self.state.error = Some(error);
+        }
+        self.refresh_dynamic_lighting(|mode| mode.is_audio());
+    }
+
+    fn refresh_dynamic_lighting(&mut self, matches: impl Fn(crate::lighting::Mode) -> bool) {
         let pending: Vec<(String, ChannelLighting)> = self
             .state
             .config
             .lighting
             .iter()
-            .filter(|(_, lighting)| lighting.mode.is_temperature())
-            .filter_map(|(key, lighting)| Some((key.clone(), self.resolve_lighting(lighting)?)))
+            .filter(|(_, lighting)| matches(lighting.mode))
+            .filter_map(|(key, lighting)| {
+                let resolved = self.resolve_lighting(lighting, self.channel_leds(key))?;
+                Some((key.clone(), resolved))
+            })
             .filter(|(key, resolved)| self.lighting_sent.get(key) != Some(resolved))
             .collect();
         for (key, resolved) in pending {
@@ -482,7 +536,7 @@ impl Engine {
         for (key, lighting) in &config.lighting {
             let (id, channel) = key.rsplit_once('/').context("Canal inválido")?;
             // Sem leitura do sensor, o modo por temperatura é enviado no próximo ciclo.
-            let Some(resolved) = self.resolve_lighting(lighting) else {
+            let Some(resolved) = self.resolve_lighting(lighting, self.channel_leds(key)) else {
                 continue;
             };
             let result = self
@@ -679,7 +733,7 @@ impl Engine {
                     .context("Canal de iluminação não encontrado")?;
                 lighting.validate(&physical.capabilities)?;
                 let id = device.info.id.clone();
-                let resolved = self.resolve_lighting(&lighting);
+                let resolved = self.resolve_lighting(&lighting, physical.leds);
                 let driver = self
                     .drivers
                     .get_mut(&id)
@@ -924,6 +978,12 @@ impl Engine {
                 self.discover();
             }
             self.cycle();
+            changed = true;
+        }
+        // Os quadros de áudio acompanham o laço do controlador (cerca de 10 por segundo).
+        let had_error = self.state.error.is_some();
+        self.refresh_audio_lighting();
+        if self.state.error.is_some() != had_error {
             changed = true;
         }
         if changed {

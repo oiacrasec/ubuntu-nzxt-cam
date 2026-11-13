@@ -64,9 +64,12 @@ A janela segue o layout do NZXT CAM: barra superior, menu lateral e cartões.
 - **Especificações do sistema**: CPU, GPU, placa-mãe, RAM, armazenamento, áudio e rede,
   com itens clicáveis e detalhes do item selecionado ao lado. Campos indisponíveis
   aparecem como `—`. Sem acesso a dados de módulos individuais, a RAM mostra o total.
-- **Iluminação**: por canal, brilho e modo; clicar na linha abre cores, velocidade e direção.
-  Vários canais podem ficar abertos; cada linha fecha apenas seu próprio detalhe.
-  **Personalizar cores LED** aceita Fixo no Anel e Fixo/Respirar na Fita.
+- **Iluminação**: por canal, brilho e modo, com os mesmos menus do CAM; clicar na
+  linha abre cores e as opções do modo (velocidade, direção, tamanho do LED,
+  movimento). Vários canais podem ficar abertos; cada linha fecha apenas seu
+  próprio detalhe. **Personalizar cores LED** aceita Fixo e Respirar no Anel e na Fita.
+  Os modos de áudio (Nivelado, Sincronização, Graves e Ganho) reagem ao som que
+  o computador toca e precisam do `parec`: `sudo apt install pulseaudio-utils`.
 - **Resfriando**: temperaturas de CPU, GPU e líquido; por canal, RPM, fonte
   (**Líquido**, **CPU**, **GPU**) e perfil **Silencioso**, **Desempenho**, **Fixo** ou
   **Personalizado**. Clicar na linha abre o editor de curva.

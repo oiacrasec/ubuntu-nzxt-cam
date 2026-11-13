@@ -24,17 +24,6 @@ pub struct SmartDevice {
     fans: [Option<SmartFanStatus>; FANS as usize],
 }
 
-fn cap(mode: Mode, min: usize, max: usize, speed: bool, direction: bool) -> Capability {
-    Capability {
-        mode,
-        min_colors: min,
-        max_colors: max,
-        speed,
-        direction,
-        per_led: matches!(mode, Mode::Fixed | Mode::Breathing),
-    }
-}
-
 impl SmartDevice {
     pub fn new(info: Info, transport: Box<dyn Transport>) -> Self {
         Self {
@@ -87,22 +76,40 @@ impl Driver for SmartDevice {
     }
 
     fn lighting_channels(&self) -> Vec<LightingChannel> {
-        // Lista e ordem do menu do CAM 4.76.8 para a Fita do Smart Device.
+        // Lista, ordem e opções do menu do CAM 4.76.8 para a Fita do Smart Device,
+        // conferidas no CAM ao escolher cada modo em 13/11/2026.
         vec![LightingChannel {
             name: "led".into(),
             capabilities: vec![
-                cap(Mode::Fixed, 1, 1, false, false),
-                cap(Mode::Breathing, 1, 8, true, false),
-                cap(Mode::Fading, 2, 8, true, false),
-                cap(Mode::Marquee, 1, 1, true, true),
-                cap(Mode::CoveringMarquee, 1, 8, true, true),
-                cap(Mode::Pulse, 1, 8, true, false),
-                cap(Mode::SpectrumWave, 0, 0, true, true),
-                cap(Mode::Alternating, 2, 2, true, true),
-                cap(Mode::Candle, 1, 1, false, false),
-                cap(Mode::Wings, 1, 1, true, false),
-                cap(Mode::CpuTemperature, 0, 0, false, false),
-                cap(Mode::GpuTemperature, 0, 0, false, false),
+                Capability::new(Mode::Fixed, 1, 1).per_led(),
+                Capability::new(Mode::Breathing, 1, 8).speed().per_led(),
+                Capability::new(Mode::Fading, 2, 8).speed(),
+                Capability::new(Mode::Marquee, 1, 1)
+                    .speed()
+                    .direction()
+                    .led_size(),
+                Capability::new(Mode::CoveringMarquee, 1, 8)
+                    .speed()
+                    .direction(),
+                Capability::new(Mode::Pulse, 1, 8).speed(),
+                Capability::new(Mode::SpectrumWave, 0, 0)
+                    .speed()
+                    .direction()
+                    .without_brightness(),
+                Capability::new(Mode::Alternating, 2, 2)
+                    .speed()
+                    .direction()
+                    .led_size()
+                    .moving(),
+                Capability::new(Mode::Candle, 1, 1),
+                Capability::new(Mode::Wings, 1, 1).speed(),
+                Capability::new(Mode::CpuTemperature, 0, 0).without_brightness(),
+                Capability::new(Mode::GpuTemperature, 0, 0).without_brightness(),
+                Capability::new(Mode::Wave, 0, 0).per_led(),
+                Capability::new(Mode::AudioLevel, 1, 8).without_brightness(),
+                Capability::new(Mode::AudioSync, 1, 8).without_brightness(),
+                Capability::new(Mode::AudioBass, 1, 1).without_brightness(),
+                Capability::new(Mode::AudioGain, 1, 8).without_brightness(),
             ],
             leds: 40,
         }]
@@ -245,10 +252,30 @@ mod tests {
         for capability in sd.lighting_channels()[0]
             .capabilities
             .iter()
-            .filter(|c| !c.mode.is_temperature())
+            .filter(|c| !c.mode.is_temperature() && !c.mode.is_audio())
         {
             assert!(protocol::smart_mode(capability.mode).is_some());
         }
+    }
+
+    #[test]
+    fn wave_always_sends_one_color_per_led() {
+        let mock = Mock::default();
+        let mut sd = device(&mock);
+        let lighting = ChannelLighting {
+            mode: Mode::Wave,
+            colors: vec![],
+            per_led: true,
+            led_colors: vec![crate::lighting::Rgb(9, 8, 7); 40],
+            ..Default::default()
+        };
+        lighting
+            .validate(&sd.lighting_channels()[0].capabilities)
+            .unwrap();
+        sd.set_lighting("led", &lighting).unwrap();
+        let writes = mock.written();
+        assert_eq!(writes.len(), 2);
+        assert_eq!(&writes[0][..8], &[0x02, 0x4b, 0x0d, 0, 2, 8, 9, 7]);
     }
 
     #[test]

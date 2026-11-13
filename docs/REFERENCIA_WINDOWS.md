@@ -154,6 +154,51 @@ Isso confirma a restauração na interface; não foi feita medição física dos
 Capturas e utilitário de observação ficam em `package/`, fora do Git:
 `cam-ring-per-led-on.png`, `cam-ring-led-selected.png`,
 `cam-logo-cpu-temperature.png`, `cam-lighting-restored.png` e `cam-observe.ps1`.
+
+## Menus e opções de cada modo (13/11/2026)
+
+A pedido do usuário, cada modo do Anel e da Fita foi escolhido no CAM 4.76.8 e o
+estado original foi restaurado no fim; o arquivo
+`%APPDATA%\NZXT CAM\DataStorage\latest\user\lightingController.json` ficou igual
+ao de antes. O `renderer.log` do CAM registra em `client.modifyChannel` os campos
+de cada modo escolhido. Esses campos são as opções que o painel mostra.
+
+| Canal | Menu, na ordem do CAM |
+| --- | --- |
+| Logótipo | Fixo, Respirar, Desvanecer, Pulsar, Onda de espectro, Temperatura do CPU, Temperatura da GPU, Nivelado, Sincronização, Graves |
+| Anel | Fixo, Respirar, Desvanecer, Painel, Painel rolante, Pulsar, Onda de espectro, Alternado, Asas, Tai Chi, Refrigerador de água, A carregar, Temperatura do CPU, Temperatura da GPU, Nivelado, Sincronização, Graves |
+| Fita | Fixo, Respirar, Desvanecer, Painel, Painel rolante, Pulsar, Onda de espectro, Alternado, Vela, Asas, Temperatura do CPU, Temperatura da GPU, Onda, Nivelado, Sincronização, Graves, Ganho |
+
+| Modo | Opções e cores padrão |
+| --- | --- |
+| Fixo | uma cor `#51007A`; **Personalizar cores LED** no Anel e na Fita |
+| Respirar | velocidade; 1 a 8 cores; **Personalizar cores LED** no Anel e na Fita |
+| Desvanecer | velocidade; cores `#51007A`, `#00FF00`, `#0000FF` |
+| Painel | velocidade, direção, tamanho do LED (3 a 6); uma cor |
+| Painel rolante | velocidade, direção; cores `#0000FF`, `#00FF00` |
+| Pulsar | velocidade; 1 a 8 cores |
+| Onda de espectro | velocidade, direção; **Cores: Automático** |
+| Alternado | velocidade, direção, tamanho do LED, **Movimento**; cores `#FF0000`, `#0000FF` |
+| Asas | velocidade; uma cor `#0000FF` |
+| Tai Chi | velocidade; cores `#FF0000`, `#0000FF` |
+| Refrigerador de água | velocidade; **Cores: Automático** |
+| A carregar | uma cor, sem velocidade |
+| Vela | uma cor `#FFA500`, sem velocidade |
+| Onda (Fita) | só a edição por LED (**Seleciona qualquer LED abaixo**) |
+| Nivelado, Sincronização, Ganho | lista numerada de 8 cores, sem prévia |
+| Graves | lista numerada com uma cor |
+
+O brilho do canal fica desativado em Onda de espectro, Refrigerador de água,
+temperatura e áudio. Com uma cor, o painel mostra o botão com o hexadecimal;
+com várias, amostras e **Add Color**. Velocidade, direção, tamanho do LED e
+movimento ficam numa linha abaixo da prévia.
+
+Os modos de áudio são calculados pelo núcleo nativo do CAM (`cam-core`), sem
+algoritmo legível; o porte usa comportamento próprio, descrito em
+`ChannelLighting::audio_frame`. O id `0x0d` do modo Onda no Smart Device vem dos
+fatos de protocolo do liquidctl (`super-wave`), não de captura do CAM.
+Folhas de contato com os painéis: `package/cam-efeitos-anel.png` e
+`package/cam-efeitos-fita.png`.
 O utilitário captura somente a janela do CAM, valida as coordenadas e restaura
 a posição do cursor após cada ação. As capturas não são recursos do porte.
 

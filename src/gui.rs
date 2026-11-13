@@ -11,7 +11,7 @@ use crate::{
     driver::{ChannelKind, CoolingChannel, LightingChannel},
     engine::{DeviceState, DeviceStatus, Request, Snapshot},
     i18n::{tr as t, trf},
-    lighting::{ChannelLighting, Mode, Rgb, Speed},
+    lighting::{Capability, ChannelLighting, Mode, Rgb, Speed},
     permissions,
 };
 use anyhow::Result;
@@ -374,8 +374,13 @@ fn mode_label(mode: Mode) -> String {
         Mode::WaterCooler => "Refrigerador de água",
         Mode::Loading => "A carregar",
         Mode::Candle => "Vela",
+        Mode::Wave => "Onda",
         Mode::CpuTemperature => "Temperatura do CPU",
         Mode::GpuTemperature => "Temperatura da GPU",
+        Mode::AudioLevel => "Nivelado",
+        Mode::AudioSync => "Sincronização",
+        Mode::AudioBass => "Graves",
+        Mode::AudioGain => "Ganho",
         other => other.label(),
     })
 }
@@ -1408,32 +1413,53 @@ impl App {
                         },
                     );
                     if let Some(mode) = chosen
+                        && mode != draft.mode
                         && let Some(capability) =
                             channel.capabilities.iter().find(|c| c.mode == mode)
                     {
+                        // Como no CAM, cada modo começa com as suas cores e opções padrão.
                         draft.mode = mode;
+                        draft.colors = mode.default_colors();
                         draft.colors.truncate(capability.max_colors);
                         while draft.colors.len() < capability.min_colors {
                             draft.colors.push(Rgb(0x51, 0x00, 0x7a));
                         }
-                        if !capability.direction {
-                            draft.backwards = false;
-                        }
-                        if !capability.per_led {
-                            draft.per_led = false;
+                        draft.speed = Speed::Normal;
+                        draft.backwards = false;
+                        draft.led_size = 3;
+                        draft.moving = false;
+                        draft.per_led = mode == Mode::Wave;
+                        if draft.per_led && draft.led_colors.len() < channel.leds {
+                            draft.led_colors.resize(channel.leds, Rgb(0xff, 0xff, 0xff));
                         }
                     }
+                    let brightness = channel
+                        .capabilities
+                        .iter()
+                        .find(|c| c.mode == draft.mode)
+                        .is_none_or(|c| c.brightness);
                     ui.add_space(8.0);
                     ui.scope(|ui| {
                         ui.spacing_mut().slider_width = 90.0;
                         ui.spacing_mut().interact_size.y = 20.0;
-                        let sun = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover()).0;
-                        draw_icon(ui.painter(), sun.shrink(2.0), Icon::Sun, SECONDARY);
-                        ui.add(egui::Slider::new(&mut draft.brightness, 0..=100).show_value(false))
+                        ui.add_enabled_ui(brightness, |ui| {
+                            if !brightness {
+                                // Como no CAM, o controle fica apagado nesses modos.
+                                ui.set_opacity(0.35);
+                            }
+                            let sun = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover()).0;
+                            draw_icon(ui.painter(), sun.shrink(2.0), Icon::Sun, SECONDARY);
+                            ui.add(
+                                egui::Slider::new(&mut draft.brightness, 0..=100).show_value(false),
+                            )
                             .on_hover_text(format!("{}%", draft.brightness));
-                        let dot = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover()).0;
-                        ui.painter()
-                            .circle_stroke(dot.center(), 5.0, Stroke::new(1.0, SECONDARY));
+                            let dot = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover()).0;
+                            ui.painter().circle_stroke(
+                                dot.center(),
+                                5.0,
+                                Stroke::new(1.0, SECONDARY),
+                            );
+                        });
                     });
                 });
             })
@@ -1490,11 +1516,27 @@ impl App {
                     }
                     return;
                 }
-                let per_led_available = channel.leds > 1;
+                if draft.mode.is_audio() {
+                    // Como no CAM, os modos de áudio mostram só a lista numerada de cores.
+                    numbered_colors(ui, &mut draft.colors);
+                    if let Err(e) = draft.validate(&channel.capabilities) {
+                        ui.colored_label(ORANGE, t(&e.to_string()));
+                    }
+                    return;
+                }
+                // O CAM só mostra "Personalizar cores LED" nos modos que aceitam.
+                let per_led_toggle =
+                    capability.per_led && channel.leds > 1 && draft.mode != Mode::Wave;
                 ui.horizontal_wrapped(|ui| {
                     if draft.per_led {
                         ui.label(
                             RichText::new(t("Seleciona qualquer LED abaixo")).color(SECONDARY),
+                        );
+                    } else if capability.max_colors == 0 {
+                        ui.label(
+                            RichText::new(t("Cores: Automático"))
+                                .size(15.0)
+                                .color(SECONDARY),
                         );
                     } else {
                         let mut remove = None;
@@ -1523,25 +1565,14 @@ impl App {
                                 .push(draft.colors.last().copied().unwrap_or(Rgb(0x51, 0, 0x7a)));
                         }
                     }
-                    if per_led_available {
+                    if per_led_toggle {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let changed = ui
-                                .add_enabled_ui(capability.per_led, |ui| {
-                                    toggle_switch(ui, &mut draft.per_led)
-                                })
-                                .inner;
+                            let changed = toggle_switch(ui, &mut draft.per_led);
                             ui.label(
                                 RichText::new(t("Personalizar cores LED"))
                                     .size(15.0)
                                     .color(SECONDARY),
                             );
-                            if !capability.per_led {
-                                ui.label(
-                                    RichText::new(t("Este modo não aceita cores por LED"))
-                                        .size(11.0)
-                                        .color(SECONDARY),
-                                );
-                            }
                             if changed && draft.per_led && draft.led_colors.len() < channel.leds {
                                 let base = draft.colors.first().copied().unwrap_or_default();
                                 draft.led_colors.resize(channel.leds, base);
@@ -1550,42 +1581,7 @@ impl App {
                     }
                 });
                 lighting_preview(ui, channel, draft);
-                if capability.speed {
-                    let margin = ((ui.available_width() - 120.0) / 2.0).max(0.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(margin);
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(120.0, 36.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.set_max_width(120.0);
-                                ui.spacing_mut().slider_width = 120.0;
-                                let mut index = draft.speed.index();
-                                ui.add(
-                                    egui::Slider::new(&mut index, 0..=4)
-                                        .show_value(false)
-                                        .step_by(1.0),
-                                );
-                                draft.speed = Speed::ALL[usize::from(index)];
-                            },
-                        );
-                    });
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            RichText::new(trf(
-                                "Velocidade {velocidade}",
-                                &[("velocidade", &t(draft.speed.label()))],
-                            ))
-                            .color(SECONDARY),
-                        );
-                    });
-                }
-                if capability.direction {
-                    ui.checkbox(&mut draft.backwards, t("Direção inversa"));
-                }
-                if matches!(draft.mode, Mode::Marquee | Mode::CoveringMarquee) {
-                    ui.add(egui::Slider::new(&mut draft.led_size, 3..=6).text(t("Tamanho do LED")));
-                }
+                mode_options(ui, &capability, draft);
                 let validation = draft.validate(&channel.capabilities);
                 if let Err(e) = &validation {
                     ui.colored_label(ORANGE, t(&e.to_string()));
@@ -2402,6 +2398,138 @@ fn color_chip(ui: &mut egui::Ui, color: &mut Rgb) -> egui::Response {
             .inner
         })
         .inner
+}
+
+/// Cores numeradas dos modos de áudio, centralizadas como no CAM.
+fn numbered_colors(ui: &mut egui::Ui, colors: &mut [Rgb]) {
+    let width = 150.0;
+    for (index, color) in colors.iter_mut().enumerate() {
+        ui.push_id(("audio-color", index), |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(((ui.available_width() - width) / 2.0).max(0.0));
+                ui.add_sized(
+                    [24.0, 32.0],
+                    egui::Label::new(
+                        RichText::new((index + 1).to_string())
+                            .size(14.0)
+                            .color(SECONDARY),
+                    ),
+                );
+                color_chip(ui, color);
+            });
+        });
+        ui.add_space(4.0);
+    }
+}
+
+/// Seta da direção; a selecionada fica clara, a outra apagada.
+fn direction_arrow(ui: &mut egui::Ui, left: bool, selected: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(26.0, 18.0), Sense::click());
+    let color = if selected || response.hovered() {
+        TEXT
+    } else {
+        SECONDARY
+    };
+    let stroke = Stroke::new(1.5, color);
+    let (from, to) = if left {
+        (rect.right_center(), rect.left_center())
+    } else {
+        (rect.left_center(), rect.right_center())
+    };
+    let from = from + Vec2::new(if left { -5.0 } else { 5.0 }, 0.0);
+    let to = to + Vec2::new(if left { 5.0 } else { -5.0 }, 0.0);
+    let back = if left { 5.0 } else { -5.0 };
+    let painter = ui.painter();
+    painter.line_segment([from, to], stroke);
+    painter.line_segment([to, to + Vec2::new(back, -4.0)], stroke);
+    painter.line_segment([to, to + Vec2::new(back, 4.0)], stroke);
+    response
+}
+
+/// Linha de opções do modo, como no CAM: velocidade, direção, tamanho do LED e
+/// movimento lado a lado, cada um só quando o modo o tem.
+fn mode_options(ui: &mut egui::Ui, capability: &Capability, draft: &mut ChannelLighting) {
+    #[derive(Clone, Copy)]
+    enum Control {
+        Speed,
+        Direction,
+        LedSize,
+        Moving,
+    }
+    let options: Vec<Control> = [
+        (capability.speed, Control::Speed),
+        (capability.direction, Control::Direction),
+        (capability.led_size, Control::LedSize),
+        (capability.moving, Control::Moving),
+    ]
+    .into_iter()
+    .filter_map(|(present, option)| present.then_some(option))
+    .collect();
+    if options.is_empty() {
+        return;
+    }
+    let caption = |ui: &mut egui::Ui, text: String| {
+        ui.label(RichText::new(text).size(13.0).color(SECONDARY));
+    };
+    let slider = |ui: &mut egui::Ui, value: &mut u8, range: std::ops::RangeInclusive<u8>| {
+        ui.horizontal(|ui| {
+            ui.add_space(((ui.available_width() - 120.0) / 2.0).max(0.0));
+            ui.spacing_mut().slider_width = 120.0;
+            ui.add(
+                egui::Slider::new(value, range)
+                    .show_value(false)
+                    .step_by(1.0),
+            );
+        });
+    };
+    ui.add_space(8.0);
+    ui.columns(options.len(), |columns| {
+        for (ui, option) in columns.iter_mut().zip(options) {
+            ui.vertical_centered(|ui| match option {
+                Control::Speed => {
+                    let mut index = draft.speed.index();
+                    slider(ui, &mut index, 0..=4);
+                    draft.speed = Speed::ALL[usize::from(index)];
+                    caption(
+                        ui,
+                        trf(
+                            "Velocidade {velocidade}",
+                            &[("velocidade", &t(draft.speed.label()))],
+                        ),
+                    );
+                }
+                Control::Direction => {
+                    ui.horizontal(|ui| {
+                        ui.add_space(((ui.available_width() - 56.0) / 2.0).max(0.0));
+                        if direction_arrow(ui, true, draft.backwards).clicked() {
+                            draft.backwards = true;
+                        }
+                        if direction_arrow(ui, false, !draft.backwards).clicked() {
+                            draft.backwards = false;
+                        }
+                    });
+                    caption(ui, t("Direção"));
+                }
+                Control::LedSize => {
+                    slider(ui, &mut draft.led_size, 3..=6);
+                    caption(
+                        ui,
+                        trf(
+                            "Tamanho do LED {tamanho}",
+                            &[("tamanho", &draft.led_size.to_string())],
+                        ),
+                    );
+                }
+                Control::Moving => {
+                    ui.horizontal(|ui| {
+                        ui.add_space(((ui.available_width() - 50.0) / 2.0).max(0.0));
+                        toggle_switch(ui, &mut draft.moving);
+                    });
+                    caption(ui, t("Movimento"));
+                }
+            });
+        }
+    });
 }
 
 /// Interruptor em pílula (trilho cinza e bolinha clara; roxo quando ligado).

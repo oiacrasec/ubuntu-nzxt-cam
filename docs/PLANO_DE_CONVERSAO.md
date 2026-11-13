@@ -64,7 +64,7 @@ ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 
 ## Continuação de 13/11/2026 (sem o usuário, só Windows)
 
-Commits locais, ainda **não enviados** ao GitHub (`main` à frente de `origin/main`):
+Commits enviados ao GitHub pelo usuário em 13/11/2026:
 
 | Commit | Entrega |
 | --- | --- |
@@ -101,7 +101,11 @@ capturando só a janela dela. Nada foi executado no Ubuntu.
    no segmento da prévia para editar um LED. Os seletores e desenhos são próprios.
 3. **Concluído em 13/11/2026:** modos por temperatura (CPU/GPU), com editor de limites. Active Profile/Profile Sync já está implementado;
    validar regras por programa/horário e retorno à seleção anterior no Ubuntu.
-4. Modos de áudio (Nivelado, Sincronização, Graves) com captura do PipeWire.
+4. **Concluído em 13/11/2026, sem validação no Ubuntu:** menus e opções da
+   Iluminação iguais aos do CAM (conferidos modo a modo no CAM real), modos de
+   áudio (Nivelado, Sincronização, Graves, Ganho) com captura por `parec` ou
+   `pw-record` em `src/audio.rs`, Onda da Fita e Respirar por LED no Anel.
+   Detalhes em [Referência Windows](REFERENCIA_WINDOWS.md#menus-e-opções-de-cada-modo-13112026).
 5. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
    iluminação, abaixo do Smart Device (pedido do usuário). Memória via SMBus exige
    proteções contra escrita no SPD.

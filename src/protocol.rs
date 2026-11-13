@@ -160,8 +160,9 @@ fn colors(lighting: &ChannelLighting) -> Vec<Rgb> {
 }
 
 fn speed_byte(lighting: &ChannelLighting, step: usize) -> u8 {
+    // O CAM envia `ledSize` em Painel e Alternado (renderer.log, 13/11/2026).
     let size = match lighting.mode {
-        Mode::Marquee => (lighting.led_size.clamp(3, 6) - 3) << 3,
+        Mode::Marquee | Mode::Alternating => (lighting.led_size.clamp(3, 6) - 3) << 3,
         _ => 0,
     };
     lighting.speed.index() | size | ((step as u8 & 0x07) << 5)
@@ -202,7 +203,7 @@ pub fn kraken_lighting(channel: u8, lighting: &ChannelLighting) -> Result<Vec<Ve
     if lighting.moving && lighting.mode == Mode::Alternating {
         flags |= 0x08;
     }
-    if lighting.per_led && lighting.mode == Mode::Fixed {
+    if lighting.per_led && matches!(lighting.mode, Mode::Fixed | Mode::Breathing) {
         // Cor por LED: um único passo com o logo e os 8 LEDs do anel.
         let leds = led_colors(lighting, 9);
         let (logo, ring) = if channel == 0x01 {
@@ -245,6 +246,8 @@ pub fn smart_mode(mode: Mode) -> Option<u8> {
         Mode::Breathing => 0x07,
         Mode::Candle => 0x09,
         Mode::Wings => 0x0c,
+        // "Onda" do CAM; no liquidctl, `super-wave` (fato de protocolo).
+        Mode::Wave => 0x0d,
         _ => return None,
     })
 }
@@ -264,7 +267,12 @@ pub fn smart_lighting(lighting: &ChannelLighting) -> Result<Vec<Vec<u8>>> {
     if lighting.moving && lighting.mode == Mode::Alternating {
         variant |= 0x08;
     }
-    if lighting.per_led && matches!(lighting.mode, Mode::Fixed | Mode::Breathing) {
+    let per_led = match lighting.mode {
+        Mode::Wave => true,
+        Mode::Fixed | Mode::Breathing => lighting.per_led,
+        _ => false,
+    };
+    if per_led {
         // Cor por LED: um único passo com as 40 cores, em GRB.
         let mut leds = Vec::with_capacity(SMART_LEDS * 3);
         for color in led_colors(lighting, SMART_LEDS) {

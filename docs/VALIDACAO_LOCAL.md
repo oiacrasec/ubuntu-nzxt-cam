@@ -73,6 +73,14 @@ feche liquidctl, CoolerControl ou qualquer outro programa que use os dispositivo
     (`stress-ng --cpu 0 -t 60`) e confira a troca de cor ao cruzar 65 °C e a
     volta ao terminar. Confira também **Temperatura da GPU** e compare a cor
     com o CAM no Windows (faixas e igualdade ainda não confirmadas no CAM).
+    O controle de brilho deve ficar apagado nesse modo, como no CAM.
+18. **Modos de áudio e Onda.** Instale `pulseaudio-utils`, toque uma música e
+    escolha **Nivelado**, **Sincronização** e **Graves** no Anel e **Ganho** na
+    Fita: os LEDs devem acompanhar o volume (e os graves, em Graves) e apagar no
+    silêncio. Sem o `parec`, o aplicativo mostra o erro com o pacote a instalar.
+    Na Fita, **Onda** deve animar as cores escolhidas LED a LED. Confira também,
+    no Anel, **Alternado** com **Movimento** e **Respirar** com
+    **Personalizar cores LED**.
 17. **Diálogos do Profile Sync.** Em um perfil diferente de Default, abra
     **Com programa** (busca, **Procurar programas**, conectar/remover) e
     **Em horário específico** (dias em quatro colunas, Início/Fim alinhados,
