@@ -29,5 +29,6 @@ hardware. As observações do CAM são evidências da referência Windows, não 
 ## Planejamento e evidências
 
 - [Roadmap, paridade e critérios de prontidão](ROADMAP.md)
+- [Ponto de retomada e próximos passos](PLANO_DE_CONVERSAO.md)
 - [Decisões de implementação](DECISOES.md)
 - [Referência Windows: NZXT CAM 4.76.8](REFERENCIA_WINDOWS.md)
