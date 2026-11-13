@@ -119,3 +119,24 @@ a CPU a 41 °C, os três fans foram para 25% (fans 2 e 3 em ~1000 RPM), sem segu
 e o Kraken manteve a curva interna pelo líquido.
 
 Etapas 6 a 18 ainda não foram executadas no Ubuntu.
+
+### Especificações do sistema — 13/11/2026
+
+Os 14 itens da lista abriram o detalhe correto, mas faltavam dados disponíveis sem
+root. Depois da correção, os 17 itens (quatro módulos de RAM em vez do total)
+foram clicados na janela e mostraram:
+
+| Item | Resultado |
+| --- | --- |
+| CPU | Intel, nome do código Coffee Lake S, 3600 MHz padrão, clock atual. Soquete, energia e TDP em `—` (exigem root) |
+| GPU | RTX 4070 SUPER, clock atual e energia em W pela NVML |
+| Placa-mãe | ROG MAXIMUS XI HERO, chipset Intel Coffee Lake S, southbridge Intel Z390, BIOS 0805 de 01/29/2019 |
+| RAM | Quatro G-Skill F4-3200C16-8GTZR, 8 GB, 2133 MT/s, DDR4. Tempos em `—` |
+| Armazenamento | Nomes completos (antes truncados em 16 caracteres nos discos ATA), fabricantes Western Digital, ADATA, Seagate e Samsung (antes `—` ou `ATA`) e formatos de todas as partições |
+| Áudio | Formato e canais das quatro placas pelo `pactl` |
+| Rede | Wi-Fi com o IPv4 da interface; Ethernet desconectada em `—` |
+
+Iluminação do Kraken X: anel e logo não mudam com nenhum comando (Fixo em
+vermelho, verde e azul, brilho 20% e Onda de espectro), embora o dispositivo aceite
+as escritas e a refrigeração funcione. No Windows o sintoma era o mesmo com o CAM.
+Teste pendente: desligar a fonte por 30 s e repetir. A Fita do Smart Device responde.

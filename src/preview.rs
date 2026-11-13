@@ -112,6 +112,7 @@ fn snapshot() -> Snapshot {
                 load_percent: Some(6.0),
                 clock_mhz: Some(2100.0),
                 fan_percent: Some(30.0),
+                power_watts: Some(18.0),
             }],
             memory: Some(Memory {
                 total_bytes: 32 << 30,

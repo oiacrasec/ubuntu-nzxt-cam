@@ -24,6 +24,9 @@ pub struct Gpu {
     pub load_percent: Option<f64>,
     pub clock_mhz: Option<f64>,
     pub fan_percent: Option<f64>,
+    /// Consumo em watts.
+    #[serde(default)]
+    pub power_watts: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -289,6 +292,10 @@ impl Sensors {
                         .and_then(|v| v.parse().ok()),
                     clock_mhz: None,
                     fan_percent: None,
+                    // `power1_average` em microwatts.
+                    power_watts: read_trimmed(&hwmon.dir.join("power1_average"))
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .map(|uw| uw / 1e6),
                 });
             }
         }
@@ -498,6 +505,8 @@ impl Sensors {
                 load_percent: device.utilization_rates().ok().map(|u| f64::from(u.gpu)),
                 clock_mhz: device.clock_info(Clock::Graphics).ok().map(f64::from),
                 fan_percent: device.fan_speed(0).ok().map(f64::from),
+                // NVML informa miliwatts.
+                power_watts: device.power_usage().ok().map(|mw| f64::from(mw) / 1000.0),
             });
         }
     }

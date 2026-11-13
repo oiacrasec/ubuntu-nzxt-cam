@@ -1241,7 +1241,10 @@ impl App {
                     "Velocidade atual do clock".into(),
                     gpu.clock_mhz.map_or("—".into(), |v| format!("{v:.0} MHz")),
                 ),
-                ("Energia".into(), "—".into()),
+                (
+                    "Energia".into(),
+                    gpu.power_watts.map_or("—".into(), |w| format!("{w:.0} W")),
+                ),
             ];
         }
         ui.horizontal_top(|ui| {

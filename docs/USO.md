@@ -64,8 +64,13 @@ A janela segue o layout do NZXT CAM: barra superior, menu lateral e cartões.
 - **PC Monitoring**: CPU e GPU (carga, temperatura, clock, ventilador), RAM, rede,
   armazenamento por disco montado e principais processos.
 - **Especificações do sistema**: CPU, GPU, placa-mãe, RAM, armazenamento, áudio e rede,
-  com itens clicáveis e detalhes do item selecionado ao lado. Campos indisponíveis
-  aparecem como `—`. Sem acesso a dados de módulos individuais, a RAM mostra o total.
+  com itens clicáveis e detalhes do item selecionado ao lado. Tudo é lido sem root:
+  módulos de RAM pelas propriedades `MEMORY_DEVICE_*` do udev, nome do código,
+  chipset e southbridge pelo `pci.ids`, modelo e formatos dos discos pelo banco do
+  udev, formato de áudio pelo `pactl` (`pulseaudio-utils`), energia da GPU pela NVML
+  e endereço IP da interface, atualizado a cada 3 s. Tipo de soquete, energia e TDP
+  da CPU e tempos da RAM exigem root (`dmidecode`, RAPL) e aparecem como `—`, assim
+  como qualquer campo sem fonte. Sem dados do udev, a RAM mostra o total.
 - **Iluminação**: por canal, brilho e modo, com os mesmos menus do CAM; clicar na
   linha abre cores e as opções do modo (velocidade, direção, tamanho do LED,
   movimento). Vários canais podem ficar abertos; cada linha fecha apenas seu

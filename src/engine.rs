@@ -157,6 +157,9 @@ pub struct System {
     pub dev: PathBuf,
     pub proc_: PathBuf,
     pub rule: PathBuf,
+    /// Raiz de `udev/data` para as especificações.
+    pub run: PathBuf,
+    pub pci_ids: PathBuf,
 }
 
 impl Default for System {
@@ -166,6 +169,8 @@ impl Default for System {
             dev: "/dev".into(),
             proc_: "/proc".into(),
             rule: permissions::RULE_PATH.into(),
+            run: "/run".into(),
+            pci_ids: crate::specs::Sources::default().pci_ids,
         }
     }
 }
@@ -204,7 +209,13 @@ impl Engine {
         let opener: Opener = Box::new(|info: &Info| {
             Ok(Box::new(devices::Hidraw::open(&info.node)?) as Box<dyn Transport>)
         });
-        Self::with_system(config_path, System::default(), opener)
+        let mut engine = Self::with_system(config_path, System::default(), opener)?;
+        crate::specs::apply_audio(&mut engine.state.specs, &crate::specs::pactl_sinks());
+        crate::specs::apply_addresses(
+            &mut engine.state.specs,
+            &crate::specs::interface_addresses(),
+        );
+        Ok(engine)
     }
 
     pub fn with_system(config_path: PathBuf, system: System, opener: Opener) -> Result<Self> {
@@ -215,7 +226,12 @@ impl Engine {
             state: Snapshot {
                 config,
                 languages: crate::i18n::available(&config_path),
-                specs: crate::specs::read_specs(&system.sys, &system.proc_),
+                specs: crate::specs::read_specs(&crate::specs::Sources {
+                    sys: system.sys.clone(),
+                    proc_: system.proc_.clone(),
+                    run: system.run.clone(),
+                    pci_ids: system.pci_ids.clone(),
+                }),
                 local_time: crate::profiles::local_time(),
                 ..Default::default()
             },
@@ -265,6 +281,8 @@ impl Engine {
     /// Abre dispositivos novos e retira os que sumiram.
     fn discover(&mut self) {
         self.last_discovery = Some(Instant::now());
+        // O endereço muda com a rede (Wi-Fi conecta depois do início da sessão).
+        crate::specs::apply_addresses(&mut self.state.specs, &crate::specs::interface_addresses());
         let found = devices::discover(&self.system.sys, &self.system.dev);
         self.state.devices.retain(|d| {
             found
@@ -1098,6 +1116,8 @@ mod profile_tests {
             dev: root.join("dev"),
             proc_: root.join("proc"),
             rule: root.join("rule"),
+            run: root.join("run"),
+            pci_ids: root.join("pci.ids"),
         };
         let mut engine = Engine::with_system(
             root.join("config.json"),
