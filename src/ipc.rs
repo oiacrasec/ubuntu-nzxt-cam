@@ -60,6 +60,7 @@ impl Drop for SocketGuard {
     }
 }
 
+#[cfg_attr(not(feature = "gui"), allow(dead_code))]
 pub struct Controller {
     pub tx: Sender<Request>,
     pub shared: SharedState,

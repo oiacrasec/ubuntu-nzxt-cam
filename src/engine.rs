@@ -12,7 +12,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         mpsc::{self, Receiver},
@@ -188,10 +188,6 @@ impl Engine {
         Ok(engine)
     }
 
-    pub fn config_path(&self) -> &Path {
-        &self.config_path
-    }
-
     fn publish(&self) {
         *self.shared.lock().unwrap_or_else(|e| e.into_inner()) = self.state.clone();
     }
@@ -264,13 +260,14 @@ impl Engine {
             }
         };
         let mut driver = driver::open(info.clone(), transport);
-        state.cooling = driver.cooling_channels();
-        state.lighting = driver.lighting_channels();
+        // Inicializar primeiro: no Kraken, o firmware lido decide se há curva interna.
         if let Err(e) = driver.initialize() {
             state.status = DeviceStatus::Failed;
             state.error = Some(format!("Falha ao inicializar: {e:#}"));
             return state;
         }
+        state.cooling = driver.cooling_channels();
+        state.lighting = driver.lighting_channels();
         for channel in &state.lighting {
             let key = channel_key(&info.id, &channel.name);
             if let Some(lighting) = self.state.config.lighting.get(&key)
@@ -281,7 +278,7 @@ impl Engine {
             }
         }
         state.status = DeviceStatus::Ready;
-        self.drivers.insert(info.id.clone(), driver);
+        self.drivers.insert(driver.info().id.clone(), driver);
         state
     }
 

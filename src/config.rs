@@ -17,6 +17,7 @@ pub enum TemperatureUnit {
 }
 
 impl TemperatureUnit {
+    #[cfg_attr(not(feature = "gui"), allow(dead_code))]
     pub fn format(self, celsius: Option<f64>) -> String {
         match celsius {
             None => "—".into(),

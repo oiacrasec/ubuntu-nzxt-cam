@@ -8,16 +8,16 @@ distingue código existente, evidência, lacunas e condições de aceitação.
 
 | Dimensão | Estado | Próxima verificação |
 | --- | --- | --- |
-| Referência Windows | Levantamento inicial | Protocolo HID no `index.node` com Ghidra |
+| Referência Windows | Protocolo levantado | CAM, documentação e leitura real conferidos; [Protocolo](REFERENCIA_WINDOWS.md#protocolo) |
 | Controlador, IPC, CLI, configuração | Implementado, sem validação no Ubuntu | Testes unitários no Windows; build e execução no Ubuntu pendentes |
 | Permissões (regra udev) | Implementado, sem validação no Ubuntu | Acesso ao hidraw como usuário comum |
 | Sensores (CPU, GPU, RAM, disco, rede) | Implementado, sem validação no Ubuntu | Leitura no i9-9900K e na RTX 4070 SUPER |
 | Governador e curvas | Implementado, sem validação no Ubuntu | Lógica testada sem hardware; resposta real pendente |
-| Kraken X: status | Proposto | Temperatura do líquido, RPM da bomba e do fan |
-| Kraken X: curva de segurança e perfis | Proposto | Perfil interno sobrevive ao encerramento do app |
-| Kraken X: iluminação Ring/Logo | Proposto | Modos habilitados pelo CAM para este modelo |
-| Smart Device V1: fans e ruído | Proposto | RPM, duty e leitura de ruído |
-| Smart Device V1: iluminação | Proposto | Modos e acessórios detectados |
+| Kraken X: status | Implementado, formato confirmado no hardware (Windows) | Leitura no Ubuntu pelo hidraw |
+| Kraken X: curva de segurança e perfis | Implementado, bytes confirmados em CAM e documentação | Perfil interno sobrevive ao encerramento do app |
+| Kraken X: iluminação Ring/Logo | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
+| Smart Device V1: fans e ruído | Implementado, formato confirmado no hardware (Windows) | Rotação fixa e leitura no Ubuntu |
+| Smart Device V1: iluminação | Implementado; ids de modo só pela documentação | Comparação visual com o CAM |
 | Governador CPU/GPU → fans | Proposto | Resposta e falha de fonte em ensaio controlado |
 | Profile Sync | Proposto | Ativação por programa e por horário |
 | Interface (layout CAM, Modo Mini, bandeja) | Proposto | Comparação visual com o CAM |

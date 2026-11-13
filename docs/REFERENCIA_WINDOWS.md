@@ -72,14 +72,59 @@ Presença de texto não comprova que o recurso se aplica ao hardware do usuário
 | Aplicação | Iniciar com o sistema, iniciar minimizado, Modo Mini (sempre no topo, encaixe na borda, painéis), °C/°F, bandeja |
 | Estados de dispositivo | Inicializando, pronto, falha de comunicação, conflito com outro programa, aguardando retomada |
 
-## Lacunas da análise
+## Protocolo
 
-- Protocolo HID do Kraken X e do Smart Device V1: relatórios, curvas, modos de
-  iluminação e leitura de status ainda não foram levantados no `index.node`.
-- Quais modos de iluminação o CAM habilita para cada dispositivo do usuário.
+Levantado em 12/11/2026. Cada comando de escrita só entra no driver quando duas
+fontes independentes concordam byte a byte: o código do CAM e a documentação
+pública do liquidctl, usada somente como referência de fatos (sem copiar código).
+As leituras também foram conferidas nos dispositivos do usuário.
+
+### Método
+
+1. `localizar_funcoes.py` leu o PE do `index.node` (134.494 funções no `.pdata`)
+   e achou as funções que referenciam `kraken_x.rs`, `smartdevice.rs`, `v1.rs` e as
+   mensagens de erro desses módulos, por instruções `lea [rip+disp]` e estruturas
+   `Location` do Rust. Resultado: 8 funções, em 2 segundos, sem análise completa.
+2. Desmontagem dessas funções com capstone (`ler_va.py`, `varrer_regiao.py`) e
+   decompilação Ghidra sem análise automática (`DecompileList.java`).
+3. Leitura somente de relatórios de entrada dos dois dispositivos, no Windows, com
+   um leitor `hidapi` sem nenhuma chamada de escrita.
+
+Os scripts e as saídas ficam em `package/ghidra-scripts/` e `package/analise/`.
+Uma análise automática completa do binário foi tentada antes e abandonada: passou
+de uma hora sem terminar e foi perdida quando a IDE fechou.
+
+### Relatórios confirmados
+
+| Comando | Bytes (relatório de 65 bytes, zeros no resto) | CAM (`index.node`) | Documentação | Hardware |
+| --- | --- | --- | --- | --- |
+| Velocidade fixa | `02 4d CANAL 00 DUTY` | `0x18142d748` (Kraken), `0x1813c2a51` (Smart Device) | igual | — |
+| Ponto de curva do Kraken | `02 4d (0x80+BASE+i) TEMP DUTY`, um por ponto | laço em `0x18142db20`; soma `0x80`; recusa mais de 64 pontos; limita temperatura e duty a 0–100 (`f64` 100,0 em `0x181dc9478`); aplica piso | fan `0x80+i`, bomba `0xC0+i` | — |
+| Base do canal | fan `0x00`, bomba `0x40` | o limite de 64 pontos é exatamente a distância `0x80`→`0xC0` | `base & 0x70` = `0x00`/`0x40` | — |
+| Grade de temperaturas | 20–49 °C (1 em 1), 50–58 °C (2 em 2), 60 °C: 36 pontos | — | igual; mesma grade nos dois canais | — |
+| Status do Kraken | `04`, líquido = b1 + b2 × 0,1, fan = b3‥b4, bomba = b5‥b6 (BE), firmware b11‥b14 | parser `0x1813b5960`, constante `f32` 0,1 em `0x182009970` | igual | `04 21 01 00 00 07 f2 … 06 00 00 02`: 33,1 °C, fan 0, bomba 2034 RPM, firmware 6.0.2 |
+| Status do Smart Device | `04`, 21 bytes, um por fan: ruído b1, RPM b3‥b4, V = b7 + b8/100, A = b9 + b10/100, fan = b15 >> 4, modo = b15 & 3 | parser testa b15 | igual | fan 2: 1306 RPM, 9,85 V, DC; fan 3: 1341 RPM, DC; fan 1: sem fan |
+| Inicialização do Smart Device | `01 5c`, depois `01 5d` | `0x1813c2933`, `0x1813c2961` | igual | — |
+| Iluminação do Kraken | `02 4c CANAL|dir|mov MODO VEL` + logo GRB + 8 LEDs | `0x1813b684e` (`0x4c02`) | layout, canais logo `0x01`/anel `0x02` e ids de modo | — |
+| Iluminação do Smart Device | `02 4b MODO VARIANTE VEL` + 57 bytes, depois `03` + 63 bytes | `0x1813b6258`, `0x1813c28e7` (`0x4b02`) | layout e ids de modo | — |
+
+Observações do hardware em 12/11/2026: o conector de fan do Kraken relata 0 RPM
+(nenhum fan ligado nele, a confirmar no CAM); o Smart Device tem fans DC nos
+canais 2 e 3, nada no canal 1, firmware 1.7 e duas fitas HUE+.
+
+### Escolhas do porte
+
+- Curvas usam a grade de 36 pontos do firmware, interpoladas da curva configurada,
+  sempre com 100% a 60 °C.
+- Curva interna só com firmware principal ≥ 3; abaixo disso, rotação fixa.
+- Pisos: bomba 50% (perfil de reset da documentação), fans 25% (o CAM declara
+  `minActivePercentage` 0,2 para fans; o porte usa um piso maior para fans DC).
+- Iluminação: confirmados no CAM o comando e o canal; os ids de modo vêm da
+  documentação e precisam do ensaio visual no Ubuntu. Iluminação não afeta a
+  refrigeração.
+
+### Lacunas
+
+- Qual camada do CAM escolhe o piso da bomba: o valor chega à função de curva
+  por um enum de requisição montado fora do módulo `kraken_x.rs`.
 - Comportamento do CAM ao fechar: o que fica gravado no dispositivo.
-
-A documentação pública do liquidctl indica que o Kraken X52/X62/X72 aceita perfis
-de bomba e fan baseados na temperatura do líquido e que o Smart Device V1 aceita
-só rotação fixa por canal. Isso orienta a investigação; não substitui a evidência
-do CAM nem um ensaio no Ubuntu.

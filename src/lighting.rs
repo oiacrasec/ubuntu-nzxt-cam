@@ -26,27 +26,6 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub const ALL: [Self; 18] = [
-        Self::Off,
-        Self::Fixed,
-        Self::Fading,
-        Self::SpectrumWave,
-        Self::Marquee,
-        Self::CoveringMarquee,
-        Self::Alternating,
-        Self::Breathing,
-        Self::Pulse,
-        Self::TaiChi,
-        Self::WaterCooler,
-        Self::Loading,
-        Self::Wings,
-        Self::SuperRainbow,
-        Self::RainbowFlow,
-        Self::RainbowPulse,
-        Self::StarryNight,
-        Self::Candle,
-    ];
-
     pub fn label(self) -> &'static str {
         match self {
             Self::Off => "Desligado",
@@ -83,6 +62,7 @@ pub enum Speed {
     Fastest,
 }
 
+#[cfg_attr(not(feature = "gui"), allow(dead_code))]
 impl Speed {
     pub const ALL: [Self; 5] = [
         Self::Slowest,

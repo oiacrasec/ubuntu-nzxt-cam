@@ -12,7 +12,6 @@ const MAX_CATALOG: u64 = 512 * 1024;
 
 #[derive(Clone, Debug, Default)]
 pub struct Catalog {
-    pub tag: String,
     entries: BTreeMap<String, String>,
 }
 
@@ -46,10 +45,7 @@ fn parse(tag: &str, text: &str) -> Result<Catalog> {
             bail!("Catálogo {tag}: marcadores diferentes em \"{key}\"");
         }
     }
-    Ok(Catalog {
-        tag: tag.into(),
-        entries,
-    })
+    Ok(Catalog { entries })
 }
 
 /// Carrega o catálogo do idioma: primeiro o diretório do usuário, depois o embutido.
@@ -59,7 +55,6 @@ pub fn load(tag: &str, config_path: &Path) -> Result<Catalog> {
     }
     if tag == "pt-BR" {
         return Ok(Catalog {
-            tag: tag.into(),
             entries: BTreeMap::new(),
         });
     }
@@ -114,6 +109,7 @@ pub fn tr(text: &str) -> String {
 }
 
 /// Tradução com substituição de `{nome}`.
+#[cfg_attr(not(feature = "gui"), allow(dead_code))]
 pub fn trf(text: &str, values: &[(&str, &str)]) -> String {
     let mut out = tr(text);
     for (name, value) in values {

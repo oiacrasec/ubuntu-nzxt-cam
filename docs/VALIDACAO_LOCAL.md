@@ -30,9 +30,10 @@ feche liquidctl, CoolerControl ou qualquer outro programa que use os dispositivo
 4. **Permissões.** Instale (`./install-desktop-app.sh`), abra o aplicativo e prepare
    as permissões em **Configurações**. Confirme `ls -l /dev/hidraw*` com ACL do
    usuário (`getfacl /dev/hidrawN`) e o estado **Pronto** nos dois dispositivos.
-5. **Leitura dos dispositivos.** Em **Monitoramento**, a temperatura do líquido e o
-   RPM da bomba e do fan do Kraken são plausíveis (líquido 25–45 °C em repouso;
-   bomba acima de 1000 RPM); os três fans e o ruído do Smart Device aparecem.
+5. **Leitura dos dispositivos.** Em **Monitoramento**, compare com a leitura do
+   Windows de 12/11/2026: líquido ~33 °C em repouso, bomba ~2030 RPM, fan do Kraken
+   0 RPM (nenhum fan no conector do Kraken); Smart Device com fan 2 ~1300 RPM,
+   fan 3 ~1340 RPM e fan 1 vazio. Firmware do Kraken 6.0.2.
 6. **Curva no Kraken (fonte Líquido).** Aplique **Performance** na bomba. O RPM sobe
    em poucos segundos. Encerre com `kill -9` o processo e confirme que a bomba
    continua na mesma rotação.
@@ -55,6 +56,15 @@ Registre também o que falhar: comando, mensagem exibida, `--status` e, para
 falhas de protocolo, a saída de `journalctl --user -b | grep nzxt-cam`.
 
 ## Resultados
+
+### Leitura no Windows — 12/11/2026
+
+Leitor `hidapi` somente leitura, com o CAM 4.76.8 aberto, sem escrita nos
+dispositivos. Relatórios brutos e decodificação em
+[Protocolo](REFERENCIA_WINDOWS.md#protocolo); eles também são os vetores dos testes
+de `protocol.rs`, `kraken_x.rs` e `smart_device.rs`.
+
+### Ubuntu
 
 Nenhuma execução no Ubuntu foi registrada até 12/11/2026. Os testes automáticos
 rodaram no Windows (Rust 1.100) com `cargo test`, com e sem recursos padrão, e
