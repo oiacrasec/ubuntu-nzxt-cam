@@ -230,7 +230,17 @@ enviados ao Kraken e ao Smart Device eram do CAM; nenhum outro programa escreveu
 neles. O que não aparece nos LEDs se explica pelo próprio CAM: na Fita ele não
 anima os modos de áudio e apaga em Onda, e em Graves o Anel não passa de 75% de
 `#51007A`, um roxo escuro. Leitura de sensores por terceiros (como a CPUID SDK)
-não aparece como escrita e não foi descartada. No Ubuntu, o porte detecta outro
+não aparece como escrita e não foi descartada.
+
+O usuário relatou que a logo do Kraken às vezes acende ao ligar o PC e depois
+apaga. As capturas começaram com o PC ligado havia minutos, então não descartam
+uma escrita feita só na inicialização de outro programa. Suspeitos: iCUE e
+`CorsairCpuIdService`, ASUS `LightingService`/`AacAmbientLighting` e o próprio
+CAM, cujo perfil ativo tem duas identidades para o mesmo Kraken
+(`kraken_x-227` com logo `#FFFFFF` e `kraken_x-107544401-…` com `#A900FF`).
+Teste pendente (exige reinstalar o USBPcap e reiniciar o Windows): capturar,
+pôr a logo em Onda de espectro e reiniciar um suspeito por vez, observando a
+logo e os relatórios enviados ao Kraken. No Ubuntu, o porte detecta outro
 processo com o hidraw aberto (`devices::holders`) e mostra o conflito.
 
 A cada segundo, o CAM 4.76.9 envia ao Kraken uma rajada de 36 relatórios
