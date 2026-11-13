@@ -11,11 +11,15 @@ nos testes automáticos; a execução com os dispositivos segue o
 ## Executar
 
 ```bash
+git clone https://github.com/oiacrasec/ubuntu-nzxt-cam.git
+cd ubuntu-nzxt-cam
 sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
-  libx11-dev libgl1-mesa-dev libdbus-1-dev
+  libx11-dev libgl1-mesa-dev libdbus-1-dev pulseaudio-utils
 ./test-desktop-app.sh
 ./install-desktop-app.sh
 ```
+
+O `pulseaudio-utils` fornece o `parec`, usado só pelos modos de áudio da iluminação.
 
 Depois abra **NZXT CAM** no menu e prepare o acesso em **Configurações** ›
 **Acesso aos dispositivos**. Detalhes em [Uso](docs/USO.md).

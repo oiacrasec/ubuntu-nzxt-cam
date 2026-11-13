@@ -29,8 +29,10 @@ continua sem controle operacional do hardware.
 ## Compilar e instalar
 
 ```bash
+git clone https://github.com/oiacrasec/ubuntu-nzxt-cam.git
+cd ubuntu-nzxt-cam
 sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
-  libx11-dev libgl1-mesa-dev libdbus-1-dev
+  libx11-dev libgl1-mesa-dev libdbus-1-dev pulseaudio-utils
 export PATH="$HOME/.cargo/bin:$PATH"
 ./test-desktop-app.sh
 ./install-desktop-app.sh            # ~/.local por padrão
