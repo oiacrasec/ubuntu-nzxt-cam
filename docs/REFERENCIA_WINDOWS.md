@@ -246,9 +246,13 @@ processo com o hidraw aberto (`devices::holders`) e mostra o conflito.
 Atualização de 13/11/2026: no Ubuntu, sem nenhum desses programas, anel e logo
 também ignoraram todos os comandos. Depois de 1 min com a fonte desligada, ficaram
 apagados desde o boot, antes de qualquer software, e assim continuaram com
-qualquer cor ou modo. O sintoma vem de defeito na iluminação do Kraken, não de
-conflito com outros programas; o teste com USBPcap deixou de ser necessário
-([Validação local](VALIDACAO_LOCAL.md#iluminação-do-kraken-x--13112026)).
+qualquer cor ou modo. Como o sintoma ocorre sem nenhum desses programas, ele não
+vem de conflito com outros softwares.
+
+Atualização de 14/11/2026: depois de reiniciar o Windows, anel e logo estavam
+acesos e o Anel respondeu à troca para **Onda de espectro** no CAM. O sintoma é
+intermitente e a causa segue desconhecida; a hipótese de defeito permanente foi
+descartada ([Validação local](VALIDACAO_LOCAL.md#iluminação-do-kraken-x--13112026)).
 
 A cada segundo, o CAM 4.76.9 envia ao Kraken uma rajada de 36 relatórios
 `02 4d`: curva do fan com 17 pontos de 20 °C a 100 °C, de 5 em 5 °C

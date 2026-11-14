@@ -61,8 +61,9 @@ O Fan 1 está vazio; a configuração dele não altera nada.
 | Kraken X: **Anel** | **Fixo** | `#51007A` | 100% |
 | Smart Device V1: **Fita** | **Respirar**, velocidade **Normal** | `#51007A` | 20% |
 
-Limitação conhecida neste hardware: o Anel e o Logótipo do Kraken têm defeito de
-iluminação e não acendem com nenhum comando, no Ubuntu nem no Windows
+Limitação conhecida neste hardware: o Anel e o Logótipo do Kraken às vezes ficam
+apagados e não respondem, no Ubuntu e no Windows; em 14/11/2026 voltaram a acender
+e a responder a comandos. A causa não foi identificada
 ([Validação local](VALIDACAO_LOCAL.md#iluminação-do-kraken-x--13112026)).
 
 ## Diferenças no NZXT CAM Windows

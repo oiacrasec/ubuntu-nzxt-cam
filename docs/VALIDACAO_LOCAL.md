@@ -150,7 +150,15 @@ Smart Device responde.
 | Depois do autostart (Fixo `#51007A`) | Apagados |
 | Sequência vermelho, verde, azul e Onda de espectro, 8 s cada | Apagados |
 
-Conclusão: defeito na iluminação do próprio Kraken (LEDs ou circuito da tampa da
-bomba). Os LEDs não acendem nem antes de qualquer software escrever, e o sintoma
-era o mesmo no Windows com o CAM. O porte não tem como contornar; a refrigeração
-não é afetada.
+Conclusão inicial (13/11/2026): defeito na iluminação do próprio Kraken. Revista
+em 14/11/2026, abaixo: o sintoma é intermitente.
+
+Revisão de 14/11/2026, no Windows com o CAM 4.76.9: depois de reiniciar o Windows,
+anel e logo estavam acesos. No CAM, o Anel passou de **Fixo** para **Onda de
+espectro** e o usuário viu o arco-íris no Kraken; depois voltou a **Fixo**
+`#51007A`. Os LEDs funcionam e respondem a comandos. A causa dos períodos em que
+ficam apagados não foi identificada; o USBPcap não explica, porque o sintoma
+também ocorreu no Ubuntu, onde ele não existe. Hipóteses não verificadas: contato
+ou alimentação da iluminação da tampa da bomba, ou estado do firmware do Kraken
+depois de certos desligamentos. Próximo passo: repetir no Ubuntu o teste de
+**Onda de espectro** no Anel enquanto os LEDs estiverem acesos.
