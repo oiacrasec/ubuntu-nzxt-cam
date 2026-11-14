@@ -155,8 +155,9 @@ em 14/11/2026, abaixo: o sintoma é intermitente.
 
 Revisão de 14/11/2026, no Windows com o CAM 4.76.9: depois de reiniciar o Windows,
 anel e logo estavam acesos. No CAM, o Anel passou de **Fixo** para **Onda de
-espectro** e o usuário viu o arco-íris no Kraken; depois voltou a **Fixo**
-`#51007A`. Os LEDs funcionam e respondem a comandos. A causa dos períodos em que
+espectro** e o usuário viu o arco-íris no Kraken; o mesmo teste no Logótipo
+também mudou a cor do logo. Os dois voltaram a **Fixo** `#51007A`. Os LEDs
+funcionam e respondem a comandos. A causa dos períodos em que
 ficam apagados não foi identificada; o USBPcap não explica, porque o sintoma
 também ocorreu no Ubuntu, onde ele não existe. Hipóteses não verificadas: contato
 ou alimentação da iluminação da tampa da bomba, ou estado do firmware do Kraken
