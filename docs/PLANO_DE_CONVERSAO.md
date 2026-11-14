@@ -33,7 +33,7 @@ Na revisão lado a lado pedida pelo usuário, foram corrigidos ícones de rede e
 ordenação, seis colunas de processos, cliques/detalhes de todos os tipos de
 especificações e expansão independente dos canais de iluminação. Mini Mode foi
 retirado da interface. Profile Sync fica antes de Sobre; Sobre segue o updater
-da Facecam (`package/facecam-reference`, revisão `d32e400`). A consulta usa a branch
+da Facecam (revisão `d32e400`; a cópia local em `package/` foi apagada em 13/11/2026). A consulta usa a branch
 padrão main/master, não releases. Instalação, rollback e reinício reais no Ubuntu
 ainda não foram exercitados. O CAM original não foi modificado nessa revisão.
 
