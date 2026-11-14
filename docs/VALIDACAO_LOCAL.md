@@ -157,7 +157,10 @@ Revisão de 14/11/2026, no Windows com o CAM 4.76.9: depois de reiniciar o Windo
 anel e logo estavam acesos. No CAM, o Anel passou de **Fixo** para **Onda de
 espectro** e o usuário viu o arco-íris no Kraken; o mesmo teste no Logótipo
 também mudou a cor do logo. Os dois voltaram a **Fixo** `#51007A`. Os LEDs
-funcionam e respondem a comandos. A causa dos períodos em que
+funcionam e respondem a comandos, mas só por alguns minutos: a partir de 09:33,
+os mesmos comandos (registrados iguais no `renderer.log` do CAM) deixaram de ter
+efeito, e reiniciar o CAM não resolveu. Até a reinicialização seguinte do PC, nada
+mudou nos LEDs. O usuário suspeita de hardware e vai limpar e revisar o PC. A causa dos períodos em que
 ficam apagados não foi identificada; o USBPcap não explica, porque o sintoma
 também ocorreu no Ubuntu, onde ele não existe. Hipóteses não verificadas: contato
 ou alimentação da iluminação da tampa da bomba, ou estado do firmware do Kraken
