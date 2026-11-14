@@ -79,26 +79,41 @@ final voltou a **Arco-íris** com **Tempo** no meio. Roteiro e análise em
 | Outro dispositivo, interrupção | `07 22 05` + cinco LEDs (índice e RGB), ~28 por segundo, em arco-íris contínuo e com o 3º LED sempre branco, antes e durante a varredura | nenhuma; parece outro periférico animado por software |
 | Outro dispositivo, controle | três pedidos de classe periódicos e iguais | nenhuma |
 
-Conclusão provável, a confirmar por uma segunda fonte: nesta placa os LEDs da
-própria placa-mãe são comandados pelo SMBus, como as memórias, e o `0b05:18a3`
-atende só os conectores ARGB endereçáveis, que estão vazios. A identificação dos
-dois outros dispositivos não foi feita.
+A identificação dos dois outros dispositivos não foi feita.
+
+## SMBus: confirmação (13/11/2026)
+
+Os LEDs da placa-mãe e das memórias usam o SMBus, confirmado por duas fontes: os
+textos dos componentes instalados (lidos no binário, sem executá-lo) e a
+documentação do OpenRGB. Nenhum acesso ao SMBus foi feito nesta análise.
+
+| Item | Placa-mãe | Memórias |
+| --- | --- | --- |
+| Barramento no Windows | SMBus do Super I/O Nuvoton: `[CreateSmbus] Intel CreateSmbus using NCTSmbus` | SMBus do chipset Intel (`IntelSbSmbus`) |
+| Controlador | ENE, firmware `AUMA0-E6K5` ou `AUMA0-E8K4` | ENE, `AUDA0-E6K5` |
+| Endereço | descoberto pelo componente, lendo o registrador `0xC1` (`FindControllerAddress`, `Mainboard_Slave`); o OpenRGB cita `0x4E` como o mais comum | a lógica G.Skill varre o barramento (`ProbeSmbusAddress`) e muda o endereço de cada pente com duas escritas (`ChangeAddress`) |
+| Driver no Linux | `i2c-nct6775`, que exige patch no kernel (não está no kernel oficial) | `i2c-i801`, no kernel oficial |
+
+Os componentes usam a trava `Global\Access_SMBUS.HTP.Method` para não disputar o
+barramento com outros programas no Windows.
 
 ## Caminho no Linux
 
 | Dispositivo | Acesso | Situação |
 | --- | --- | --- |
-| Placa-mãe (LEDs próprios) | SMBus pelo `i2c-i801` e `i2c-dev`, com root ou regra própria | Arriscado, como as memórias; a captura não mostrou tráfego USB |
+| Placa-mãe (LEDs próprios) | SMBus do Super I/O por `i2c-nct6775` e `i2c-dev` | Bloqueado: o driver exige patch no kernel, e o acesso exige root |
 | Conectores ARGB da placa | hidraw do `0b05:18a3`, com regra udev, sem root | Viável quando houver algo ligado; protocolo da geração `18a3` não confirmado (o OpenRGB documenta a `18f3`, com mensagens HID de 65 bytes) |
-| Memórias | SMBus pelo `i2c-dev` | Arriscado. O chip RGB fica no mesmo barramento do SPD; um endereço errado pode corromper a configuração da memória |
+| Memórias | SMBus do chipset por `i2c-i801` e `i2c-dev` | Alto risco: exige varrer o barramento e reendereçar os controladores no mesmo barramento do SPD; um erro pode corromper a configuração da memória |
 
-Antes de implementar:
+Regras para qualquer implementação futura:
 
-1. Confirmar por segunda fonte que os LEDs da MAXIMUS XI HERO usam o SMBus e em
-   qual endereço; o SMBus não aparece em captura USB.
-2. Não varrer endereços do SMBus: usar só endereços confirmados por duas fontes e
-   só escrita nos registradores de LED, com teste que recuse qualquer outro destino.
-3. Verificar se o `i2c-i801` acessa o SMBus no Ubuntu sem conflito com o ACPI.
+1. Não varrer endereços do SMBus nem mudar endereços de controladores a partir do
+   porte; usar só endereços confirmados por duas fontes e só os registradores de
+   LED, com teste que recuse qualquer outro destino.
+2. Nunca acessar endereços de SPD (`0x50`–`0x57`) nem `0x68`, endereço citado pelo
+   OpenRGB em relatos de placas inutilizadas.
+3. Exigir que o usuário instale o driver e autorize o acesso explicitamente, como
+   a regra udev, mostrando o plano antes.
 4. Os efeitos animados (Música, Imersão, Noite estrelada, Smart) devem virar
    quadros enviados pelo controlador, como os modos de áudio do porte.
 
@@ -118,5 +133,7 @@ Em `package/`, fora do Git:
 - [OpenRGB: ASUS Aura USB](https://openrgb-wiki.readthedocs.io/en/latest/asus/ASUS-Aura-USB/)
 - [OpenRGB: acesso ao SMBus](https://gitea.marinkevich.ru/grayhook/OpenRGB/raw/branch/master/Documentation/SMBusAccess.md)
 - [OpenRGB: perguntas frequentes (i2c-dev, udev)](https://openrgb-wiki.readthedocs.io/en/latest/Frequently-Asked-Questions/)
+- [OpenRGB: visão geral do ASUS Aura (endereços)](https://openrgb-wiki.readthedocs.io/en/latest/asus/ASUS-Aura-Overview/)
+- [OpenRGB: relato de memória Aura num Z390 com i9-9900K](https://gitlab.com/CalcProgrammer1/OpenRGB/-/issues/4058)
 
 O código do OpenRGB (GPL) serve só como referência de fatos; não deve ser copiado.
