@@ -116,6 +116,26 @@ espera a anterior sair antes de adquirir o controle. Na prévia Windows, todo es
 fluxo é simulado sem rede nem alterações em arquivos. Instalação, rollback e reinício
 reais continuam pendentes de ensaio no Ubuntu.
 
+## Iluminação ASUS da placa-mãe e das memórias cancelada — 13/11/2026
+
+**Problema:** o usuário pediu os LEDs da ROG MAXIMUS XI HERO e das memórias
+G.Skill na página **Iluminação**. **Contexto:** a análise confirmou que os dois
+usam o SMBus ([referência](REFERENCIA_ASUS_AURA.md)). A placa-mãe fica no SMBus
+do Super I/O, que no Ubuntu exige o `i2c-nct6775` com patch fora do kernel
+oficial; as memórias exigem varrer o barramento e reendereçar os controladores no
+mesmo barramento do SPD, onde um erro pode inutilizar um pente.
+**Alternativas:** (a) implementação própria a partir dos fatos documentados,
+mantendo MIT, com auxiliar privilegiado, lista fechada de endereços e backup do
+SPD; (b) copiar o código do OpenRGB, o que torna o projeto GPL-2.0 e traz a
+operação arriscada para dentro do nosso binário; (c) delegar ao OpenRGB pelo SDK
+local (porta `6742`), sem código nosso no SMBus e sem mudar a licença.
+**Escolha:** nenhuma; o usuário cancelou o plano. O risco ao hardware e a
+dependência de um driver fora do kernel não compensam neste momento.
+**Consequência:** placa-mãe e memórias ficam fora do escopo atual. A referência
+fica guardada; se o tema voltar, (c) é o caminho recomendado e (b) só com a
+decisão explícita de relicenciar o projeto. A placa de som AE-5 Plus segue como
+proposta separada ([referência](REFERENCIA_SOUND_BLASTER.md)).
+
 ## Como registrar uma nova decisão
 
 Indicar data, problema, contexto, alternativas examinadas, escolha, consequências

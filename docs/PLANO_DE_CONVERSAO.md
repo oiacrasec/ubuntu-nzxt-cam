@@ -111,9 +111,10 @@ capturando só a janela dela. Nada foi executado no Ubuntu.
    grava a curva de 36 pontos (20–60 °C) só quando muda. Decidir com base nas
    regras de segurança térmica antes de mudar
    ([Referência Windows](REFERENCIA_WINDOWS.md#outros-programas-e-refrigeração-observados-na-captura)).
-6. LEDs de memória G.Skill, placa-mãe ASUS Aura e placa de som AE-5 Plus, somente
-   iluminação, abaixo do Smart Device (pedido do usuário). Memória via SMBus exige
-   proteções contra escrita no SPD.
+6. LEDs da placa de som AE-5 Plus, somente iluminação, abaixo do Smart Device
+   (pedido do usuário; [referência](REFERENCIA_SOUND_BLASTER.md)). Placa-mãe e
+   memórias foram canceladas em 13/11/2026
+   ([decisão](DECISOES.md#iluminação-asus-da-placa-mãe-e-das-memórias-cancelada--13112026)).
 7. No Ubuntu, pelo usuário: seguir [Validação local](VALIDACAO_LOCAL.md), incluindo
    instalação registrada, consulta de produção, publicação/rollback e reinício
    seguro a partir de Sobre. Campos indisponíveis nas especificações/processos

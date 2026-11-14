@@ -1,9 +1,11 @@
 # Referência: iluminação ASUS Aura da placa-mãe e das memórias
 
 Esta página reúne o que se sabe da iluminação da placa-mãe ROG MAXIMUS XI HERO e
-das memórias G.Skill, controladas no Windows pelo Armoury Crate, para levá-las ao
-porte abaixo do Smart Device na página **Iluminação**. Estado: **Proposto**; nada
-disto está implementado.
+das memórias G.Skill, controladas no Windows pelo Armoury Crate. Estado: **Fora do
+escopo atual**. O plano de levá-las ao porte foi cancelado em 13/11/2026 pelo
+risco ao hardware e pela dependência de um driver fora do kernel
+([decisão](DECISOES.md#iluminação-asus-da-placa-mãe-e-das-memórias-cancelada--13112026)).
+A página fica como registro para quem retomar o tema.
 
 São produtos de outra marca, fora do escopo atual ([CLAUDE.md](../CLAUDE.md)); a
 análise foi feita a pedido do usuário em 13/11/2026. Quando for implementada, a
@@ -104,6 +106,19 @@ barramento com outros programas no Windows.
 | Placa-mãe (LEDs próprios) | SMBus do Super I/O por `i2c-nct6775` e `i2c-dev` | Bloqueado: o driver exige patch no kernel, e o acesso exige root |
 | Conectores ARGB da placa | hidraw do `0b05:18a3`, com regra udev, sem root | Viável quando houver algo ligado; protocolo da geração `18a3` não confirmado (o OpenRGB documenta a `18f3`, com mensagens HID de 65 bytes) |
 | Memórias | SMBus do chipset por `i2c-i801` e `i2c-dev` | Alto risco: exige varrer o barramento e reendereçar os controladores no mesmo barramento do SPD; um erro pode corromper a configuração da memória |
+
+## Se o tema voltar
+
+| Caminho | Licença | Risco ao hardware |
+| --- | --- | --- |
+| SDK do OpenRGB (servidor local, porta `6742`) | continua MIT | nenhum código nosso no SMBus; o OpenRGB faz a varredura e o reendereçamento |
+| Implementação própria a partir dos fatos | continua MIT | todo nosso; exige as regras abaixo |
+| Copiar o código do OpenRGB | o projeto passa a GPL-2.0 | a operação arriscada roda no nosso binário; traduzir C++ para Rust pode introduzir erros |
+
+Em qualquer caminho, a placa-mãe exige o `i2c-nct6775` com patch no kernel. Uma
+hipótese não confirmada para as memórias: escrever no endereço de fábrica,
+comum aos quatro pentes, mudaria os quatro juntos sem reendereçar; precisaria de
+duas fontes antes de qualquer teste.
 
 Regras para qualquer implementação futura:
 
