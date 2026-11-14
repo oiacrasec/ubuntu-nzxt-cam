@@ -63,21 +63,43 @@ Os efeitos chegam aos componentes como um identificador e uma lista de cores; os
 identificadores e o que cada componente envia ao hardware não foram extraídos
 (ambos são nativos).
 
+## Captura USB (13/11/2026)
+
+Com USBPcap 1.5.4, o tráfego do único controlador USB da máquina (Intel
+`8086:a36d`, onde fica o `0b05:18a3`) foi gravado enquanto cada efeito básico era
+escolhido por 6 s e o **Tempo** do Arco-íris passava pelas cinco posições; ao
+final voltou a **Arco-íris** com **Tempo** no meio. Roteiro e análise em
+`package/usb-captura/` (`varrer-aura.ps1`, `aura-USBPcap1.pcap`,
+`aura-janelas.py`).
+
+| Dispositivo no barramento | O que recebeu | Relação com o Aura |
+| --- | --- | --- |
+| `0b05:18a3` (Aura) | **nada** durante os 11 efeitos e as 5 velocidades | — |
+| Kraken X e Smart Device | os comandos de refrigeração do CAM | nenhuma |
+| Outro dispositivo, interrupção | `07 22 05` + cinco LEDs (índice e RGB), ~28 por segundo, em arco-íris contínuo e com o 3º LED sempre branco, antes e durante a varredura | nenhuma; parece outro periférico animado por software |
+| Outro dispositivo, controle | três pedidos de classe periódicos e iguais | nenhuma |
+
+Conclusão provável, a confirmar por uma segunda fonte: nesta placa os LEDs da
+própria placa-mãe são comandados pelo SMBus, como as memórias, e o `0b05:18a3`
+atende só os conectores ARGB endereçáveis, que estão vazios. A identificação dos
+dois outros dispositivos não foi feita.
+
 ## Caminho no Linux
 
 | Dispositivo | Acesso | Situação |
 | --- | --- | --- |
-| Placa-mãe | hidraw, como o Kraken e o Smart Device; uma regra udev dá acesso sem root | Viável. A documentação do OpenRGB descreve a geração `0b05:18f3` (mensagens HID de 65 bytes); a geração `18a3` não foi confirmada e precisa de captura USB |
-| Memórias | SMBus pelo módulo `i2c-dev`, com root ou regra própria | Arriscado. O chip RGB fica no mesmo barramento do SPD; um endereço errado pode corromper a configuração da memória |
+| Placa-mãe (LEDs próprios) | SMBus pelo `i2c-i801` e `i2c-dev`, com root ou regra própria | Arriscado, como as memórias; a captura não mostrou tráfego USB |
+| Conectores ARGB da placa | hidraw do `0b05:18a3`, com regra udev, sem root | Viável quando houver algo ligado; protocolo da geração `18a3` não confirmado (o OpenRGB documenta a `18f3`, com mensagens HID de 65 bytes) |
+| Memórias | SMBus pelo `i2c-dev` | Arriscado. O chip RGB fica no mesmo barramento do SPD; um endereço errado pode corromper a configuração da memória |
 
 Antes de implementar:
 
-1. Capturar com USBPcap o que o Armoury Crate envia a `0b05:18a3` em cada efeito,
-   como foi feito com o Kraken ([Referência Windows](REFERENCIA_WINDOWS.md)).
-2. Para as memórias, não varrer endereços do SMBus: usar só endereços confirmados
-   por duas fontes e só escrita nos registradores de LED, com teste que recuse
-   qualquer outro destino. O SMBus não aparece numa captura USB.
-3. Os efeitos animados (Música, Imersão, Noite estrelada, Smart) devem virar
+1. Confirmar por segunda fonte que os LEDs da MAXIMUS XI HERO usam o SMBus e em
+   qual endereço; o SMBus não aparece em captura USB.
+2. Não varrer endereços do SMBus: usar só endereços confirmados por duas fontes e
+   só escrita nos registradores de LED, com teste que recuse qualquer outro destino.
+3. Verificar se o `i2c-i801` acessa o SMBus no Ubuntu sem conflito com o ACPI.
+4. Os efeitos animados (Música, Imersão, Noite estrelada, Smart) devem virar
    quadros enviados pelo controlador, como os modos de áudio do porte.
 
 ## Evidências locais
