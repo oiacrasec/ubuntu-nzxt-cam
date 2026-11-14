@@ -34,3 +34,4 @@ hardware. As observações do CAM são evidências da referência Windows, não 
 - [Decisões de implementação](DECISOES.md)
 - [Referência Windows: NZXT CAM 4.76.8](REFERENCIA_WINDOWS.md)
 - [Possíveis conflitos do CAM Windows com outros softwares](REFERENCIA_WINDOWS.md#possíveis-conflitos-com-outros-softwares)
+- [Referência: iluminação da Sound BlasterX AE-5 Plus](REFERENCIA_SOUND_BLASTER.md)
