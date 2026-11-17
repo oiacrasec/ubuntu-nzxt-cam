@@ -1,9 +1,8 @@
 # Desenvolvimento
 
-**Estado: Proposto.** Ainda não há `Cargo.toml`; esta página fixa o ciclo previsto.
 Compile e teste no Ubuntu 24.04+ de destino.
 
-## Preparação prevista
+## Preparação
 
 ```bash
 sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev \
@@ -26,6 +25,17 @@ abrirá a janela; `cargo run --locked -- --headless`, somente o controlador.
 
 Um único crate com módulos, como no Facecam Hub. A thread gráfica não espera
 dispositivo nem sensor.
+
+## Versão
+
+A versão do produto é o `version` do `Cargo.toml`, incrementada à mão a cada
+conjunto de funções entregue ([decisão](DECISOES.md#versão-do-produto-incrementada-à-mão--17112026)).
+Ao mudar, atualize o `Cargo.lock` (`cargo update -p nzxt-cam --offline` ou um
+build sem `--locked`). Cada build é identificado também pela revisão do Git
+(`nzxt-cam --build-info`).
+
+Ao subir a versão, acrescente a entrada em [Versões](VERSOES.md) e atualize a
+versão declarada no [manual](README.md).
 
 ## Instância de teste
 

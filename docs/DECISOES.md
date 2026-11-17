@@ -136,6 +136,20 @@ fica guardada; se o tema voltar, (c) é o caminho recomendado e (b) só com a
 decisão explícita de relicenciar o projeto. A placa de som AE-5 Plus segue como
 proposta separada ([referência](REFERENCIA_SOUND_BLASTER.md)).
 
+## Versão do produto incrementada à mão — 17/11/2026
+
+**Problema:** a versão exibida em **Sobre** e no rodapé ficou em 0.1.0 desde o
+início, embora as atualizações por **Sobre** troquem o binário; para o usuário,
+parecia travada. **Alternativas:** (a) calcular a versão no build a partir do
+número de commits; (b) incrementar `version` no `Cargo.toml` a cada conjunto de
+funções entregue, como no Facecam Hub; (c) manter 0.1.0 e exibir só a revisão.
+**Escolha:** (b), igual ao Facecam Hub. **Consequência:** a versão sobe com
+novas funções (menor) ou mudanças incompatíveis (maior); correções isoladas
+mantêm o número, e cada build continua identificado pela revisão do Git, que
+o atualizador compara. Ao incrementar, atualize também o `Cargo.lock`, porque
+o build usa `--locked`. A 0.2.0 marca a validação no hardware de referência,
+a atualização em produção e as especificações completas.
+
 ## Como registrar uma nova decisão
 
 Indicar data, problema, contexto, alternativas examinadas, escolha, consequências

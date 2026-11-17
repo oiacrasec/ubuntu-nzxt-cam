@@ -2,6 +2,7 @@
 
 O projeto porta o NZXT CAM para Ubuntu 24.04+ com uma aplicação nativa Rust.
 Comece pela [arquitetura](ARQUITETURA.md) e pela [referência Windows](REFERENCIA_WINDOWS.md).
+A versão declarada é 0.2.0; o que entrou em cada versão está em [Versões](VERSOES.md).
 
 ## Estado das informações
 
@@ -19,6 +20,7 @@ hardware. As observações do CAM são evidências da referência Windows, não 
 - [Compilar, instalar, permissões, telas e CLI](USO.md)
 - [Roteiro de validação no Ubuntu e resultados](VALIDACAO_LOCAL.md)
 - [Configuração de referência e como repeti-la no CAM Windows](CONFIGURACAO_DE_REFERENCIA.md)
+- [Versões e o que entrou em cada uma](VERSOES.md)
 
 ## Engenharia
 
